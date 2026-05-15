@@ -1,0 +1,168 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import type { AppUser, Conversation, Message, Channel } from '@/types';
+import { getSupabaseBrowser } from '@/lib/supabase';
+import BrandRail from '@/components/BrandRail';
+import ChannelTabs from '@/components/ChannelTabs';
+import ConversationList from '@/components/ConversationList';
+import ChatWindow from '@/components/ChatWindow';
+
+export type StatusFilter = 'all' | 'AI' | 'HUMAN' | 'QUALIFIED' | 'MINE' | 'PENDING';
+
+interface InboxClientProps {
+  currentUser: AppUser;
+}
+
+export default function InboxClient({ currentUser }: InboxClientProps) {
+  const [activeBrand] = useState<'TBS'>('TBS');
+  const [activeChannel] = useState<Channel>('WA');
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [search, setSearch] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loadingConvs, setLoadingConvs] = useState(true);
+
+  const selectedConversation = conversations.find((c) => c.id === selectedId) ?? null;
+
+  const fetchConversations = useCallback(async () => {
+    const params = new URLSearchParams({
+      brand: activeBrand,
+      channel: activeChannel,
+    });
+
+    if (statusFilter === 'AI' || statusFilter === 'HUMAN') {
+      params.set('mode', statusFilter);
+    } else if (statusFilter === 'QUALIFIED') {
+      params.set('status', 'QUALIFIED');
+    } else if (statusFilter === 'MINE') {
+      params.set('mine', 'true');
+    } else if (statusFilter === 'PENDING') {
+      params.set('pending', 'true');
+    }
+
+    if (search) {
+      params.set('search', search);
+    }
+
+    const res = await fetch(`/api/conversations?${params.toString()}`);
+    if (res.ok) {
+      const data = await res.json();
+      setConversations(data);
+    }
+    setLoadingConvs(false);
+  }, [activeBrand, activeChannel, statusFilter, search]);
+
+  const fetchMessages = useCallback(async (conversationId: string) => {
+    const res = await fetch(`/api/conversations/${conversationId}/messages`);
+    if (res.ok) {
+      const data = await res.json();
+      setMessages(data);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchConversations();
+  }, [fetchConversations]);
+
+  useEffect(() => {
+    if (selectedId) {
+      fetchMessages(selectedId);
+    } else {
+      setMessages([]);
+    }
+  }, [selectedId, fetchMessages]);
+
+  // Supabase Realtime
+  useEffect(() => {
+    const supabase = getSupabaseBrowser();
+
+    const channel = supabase
+      .channel('inbox-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conversations' },
+        () => {
+          fetchConversations();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (payload: any) => {
+          const newMsg = payload.new as Message;
+          if (newMsg.conversation_id === selectedId) {
+            setMessages((prev) => {
+              const exists = prev.some((m) => m.id === newMsg.id);
+              if (exists) return prev;
+              return [...prev, newMsg];
+            });
+          }
+          fetchConversations();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedId, fetchConversations]);
+
+  function handleConversationUpdate(updatedConv: Conversation) {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === updatedConv.id ? updatedConv : c))
+    );
+  }
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-white">
+      {/* Brand Rail */}
+      <BrandRail activeBrand={activeBrand} />
+
+      {/* Sidebar */}
+      <div className="w-[260px] flex flex-col border-r border-slate-200 bg-white">
+        {/* Channel tabs */}
+        <div className="border-b border-slate-200 px-3 pt-3">
+          <ChannelTabs activeChannel={activeChannel} />
+        </div>
+
+        {/* Conversation list */}
+        <ConversationList
+          conversations={conversations}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          search={search}
+          setSearch={setSearch}
+          currentUserId={currentUser.id}
+          loading={loadingConvs}
+        />
+      </div>
+
+      {/* Chat Panel */}
+      <div className="flex-1 flex flex-col bg-[#F9F6F4] overflow-hidden">
+        {selectedConversation ? (
+          <ChatWindow
+            conversation={selectedConversation}
+            currentUser={currentUser}
+            messages={messages}
+            onModeChange={handleConversationUpdate}
+            onAssign={handleConversationUpdate}
+            onConversationUpdate={handleConversationUpdate}
+            onMessageSent={() => fetchMessages(selectedConversation.id)}
+          />
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center text-slate-400">
+              <div className="text-5xl mb-4">💬</div>
+              <p className="text-sm">Select a conversation to start</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
