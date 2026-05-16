@@ -6,6 +6,7 @@ import MessageBubble from './MessageBubble';
 import LeadInfoBar from './LeadInfoBar';
 import ModeToggle from './ModeToggle';
 import AssignDropdown from './AssignDropdown';
+import PushToCRMModal from './PushToCRMModal';
 
 interface ChatWindowProps {
   conversation: Conversation;
@@ -35,6 +36,7 @@ export default function ChatWindow({
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
   const [dismissingCallback, setDismissingCallback] = useState(false);
+  const [showCRMModal, setShowCRMModal] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const isHumanMode = conversation.mode === 'HUMAN';
@@ -91,6 +93,19 @@ export default function ChatWindow({
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
+          {/* CRM status */}
+          {conversation.pushed_to_crm ? (
+            <span className="text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded-full whitespace-nowrap">
+              ✓ In CRM · Deal #{conversation.crm_deal_id}
+            </span>
+          ) : (
+            <button
+              onClick={() => setShowCRMModal(true)}
+              className="text-xs font-medium text-slate-600 border border-slate-300 hover:border-green-500 hover:text-green-700 px-2.5 py-1 rounded-full transition-colors whitespace-nowrap"
+            >
+              Push to CRM
+            </button>
+          )}
           <AssignDropdown conversation={conversation} onAssign={onAssign} />
           <ModeToggle conversation={conversation} onToggle={onModeChange} />
         </div>
@@ -205,8 +220,25 @@ export default function ChatWindow({
         )}
       </div>
 
-      {/* Hidden current user info for compiler */}
-      {currentUser && null}
+      {/* Push to CRM modal */}
+      {showCRMModal && (
+        <PushToCRMModal
+          conversation={conversation}
+          messages={messages}
+          currentUser={currentUser}
+          onClose={() => setShowCRMModal(false)}
+          onSuccess={(dealId) => {
+            setShowCRMModal(false);
+            onConversationUpdate({
+              ...conversation,
+              pushed_to_crm: true,
+              crm_deal_id: dealId,
+              pushed_to_crm_at: new Date().toISOString(),
+              pushed_by_user_id: currentUser.id,
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,0 +1,193 @@
+export const dynamic = 'force-dynamic';
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { createServerClient } from '@/lib/supabase';
+import { getUserByAuthId } from '@/lib/auth';
+import { queryCRM, insertCRM } from '@/lib/mysql-crm';
+
+interface PushBody {
+  client_name: string;
+  city: string | null;
+  wedding_date: string | null;
+  guest_count: string | null;
+  budget: number | null;
+  service_type: 'planning-only' | 'decor-only' | 'planning+decor' | null;
+  assign_to_crm_user_id: number | null;
+  notes: string | null;
+}
+
+interface CRMUserRow { id: number; first_name: string; last_name: string; }
+
+function mapServiceType(st: string | null) {
+  switch (st) {
+    case 'planning-only':  return { tbs_service_type: 'PLANNING', planning: 1, decor: 0 };
+    case 'decor-only':     return { tbs_service_type: 'DECOR',    planning: 0, decor: 1 };
+    case 'planning+decor': return { tbs_service_type: 'PLANNING', planning: 1, decor: 1 };
+    default:               return { tbs_service_type: null,        planning: 0, decor: 0 };
+  }
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const cookieStore = cookies();
+  const supabaseAuth = createSupabaseSSR(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll(); },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  const { data: { user } } = await supabaseAuth.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const supabase = createServerClient();
+  const appUser = await getUserByAuthId(user.id);
+  if (!appUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Fetch conversation
+  const { data: conv, error: convErr } = await supabase
+    .from('conversations')
+    .select('*')
+    .eq('id', params.id)
+    .single();
+
+  if (convErr || !conv) {
+    return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+  }
+
+  if (conv.pushed_to_crm) {
+    return NextResponse.json({ error: 'Already pushed to CRM' }, { status: 409 });
+  }
+
+  const body = (await request.json()) as PushBody;
+
+  // Look up logged-in user's CRM ID by email
+  let createdByCRMId: number | null = null;
+  let createdByName: string = appUser.name;
+
+  try {
+    const crmUserRows = await queryCRM<CRMUserRow[]>(
+      'SELECT id, first_name, last_name FROM users WHERE email = ? AND active = 1 LIMIT 1',
+      [appUser.email]
+    );
+    if (crmUserRows.length > 0) {
+      createdByCRMId = crmUserRows[0].id;
+      createdByName = `${crmUserRows[0].first_name} ${crmUserRows[0].last_name}`.trim();
+    }
+  } catch (err) {
+    console.warn('[Push CRM] Could not resolve creator CRM user:', err);
+  }
+
+  // TODO: switch to production pipelines before go-live
+  // Production: TBS → pipeline_id=67, stage_id=339 | RD → pipeline_id=58, stage_id=276
+  const pipeline_id = 113; // TBS Test
+  const stage_id    = 660; // Lead In
+
+  // Sub-source by channel
+  const deal_sub_source = conv.channel === 'IG' ? 'INSTAGRAM' : 'WHATSAPP';
+
+  // Service type mapping
+  const { tbs_service_type, planning, decor } = mapServiceType(body.service_type);
+
+  // phone_num: strip leading country code if 91XXXXXXXXXX (12 digits → last 10)
+  const rawPhone = conv.phone_number as string;
+  const phone_num = rawPhone.length === 12 && rawPhone.startsWith('91')
+    ? rawPhone.slice(2)
+    : rawPhone;
+
+  // 1. Insert/upsert person
+  await insertCRM(
+    `INSERT INTO persons
+       (name, phone, phone_num, wedding_city, city, wedding_date, instagram_id,
+        person_source, sub_source, lead_date, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'DIRECT', ?, CURDATE(), NOW(), NOW())
+     ON DUPLICATE KEY UPDATE
+       name=VALUES(name), wedding_city=VALUES(wedding_city),
+       updated_at=NOW(), id=LAST_INSERT_ID(id)`,
+    [
+      body.client_name,
+      rawPhone,
+      phone_num,
+      body.city ?? null,
+      body.city ?? null,
+      body.wedding_date ?? null,
+      conv.instagram_id ?? null,
+      deal_sub_source,
+    ]
+  );
+
+  // Get person_id (works for both insert and duplicate-key update cases)
+  const personIdRows = await queryCRM<{ id: number }[]>(
+    'SELECT id FROM persons WHERE phone = ? LIMIT 1',
+    [rawPhone]
+  );
+  const person_id = personIdRows[0]?.id ?? null;
+
+  // 2. Insert deal
+  const dealResult = await insertCRM(
+    `INSERT INTO deals
+       (name, phone_number, person_name, city, event_date, expected_gathering,
+        client_budget, budget, pipeline_id, stage_id, status, deal_source,
+        deal_sub_source, created_by, created_by_name, created_by_user_id,
+        tbs_service_type, notes, person_id, interested_in_planning,
+        interested_in_decor, interested_in_venue, owner_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 'DIRECT', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NOW(), NOW())`,
+    [
+      `${body.client_name} Wedding`,   // name
+      rawPhone,                          // phone_number
+      body.client_name,                  // person_name
+      body.city ?? null,                 // city
+      body.wedding_date ?? null,         // event_date
+      body.guest_count ?? null,          // expected_gathering
+      body.budget ?? null,               // client_budget
+      body.budget ?? null,               // budget
+      pipeline_id,
+      stage_id,
+      deal_sub_source,
+      createdByCRMId,                    // created_by
+      createdByName,                     // created_by_name
+      createdByCRMId,                    // created_by_user_id
+      tbs_service_type,
+      body.notes ?? null,
+      person_id,
+      planning,
+      decor,
+      body.assign_to_crm_user_id ?? createdByCRMId,  // owner_id
+    ]
+  );
+
+  const crmDealId = dealResult.insertId;
+
+  // 3. Update Supabase conversation
+  const now = new Date().toISOString();
+  const { error: updateErr } = await supabase
+    .from('conversations')
+    .update({
+      pushed_to_crm: true,
+      crm_deal_id: crmDealId,
+      pushed_to_crm_at: now,
+      pushed_by_user_id: appUser.id,
+      updated_at: now,
+    })
+    .eq('id', params.id);
+
+  if (updateErr) {
+    console.error('[Push CRM] Supabase update failed after CRM insert:', updateErr);
+  }
+
+  console.log(`[Push CRM] conversation=${params.id} → deal_id=${crmDealId} person_id=${person_id}`);
+
+  return NextResponse.json({ ok: true, crm_deal_id: crmDealId });
+}

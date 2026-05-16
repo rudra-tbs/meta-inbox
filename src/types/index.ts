@@ -39,6 +39,11 @@ export interface Conversation {
   needs_human_reply: boolean;
   callback_required: boolean;
   manually_set_human: boolean;
+  instagram_id: string | null;
+  pushed_to_crm: boolean;
+  crm_deal_id: number | null;
+  pushed_to_crm_at: string | null;
+  pushed_by_user_id: string | null;
   first_contact_at: string;
   last_message_at: string;
   last_human_message_at: string | null;
