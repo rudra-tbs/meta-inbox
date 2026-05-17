@@ -18,12 +18,12 @@ const PILLS: { label: string; value: StatusFilter }[] = [
 
 export default function FilterPills({ value, onChange }: FilterPillsProps) {
   return (
-    <div className="flex flex-wrap gap-1 px-3 py-2">
+    <div className="flex gap-1 px-3 py-2 overflow-x-auto scrollbar-none">
       {PILLS.map((pill) => (
         <button
           key={pill.value}
           onClick={() => onChange(pill.value)}
-          className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+          className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
             value === pill.value
               ? pill.value === 'PENDING'
                 ? 'bg-amber-500 text-white'

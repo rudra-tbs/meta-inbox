@@ -89,49 +89,49 @@ export default function ConversationItem({
           {conversation.last_message || 'No messages yet'}
         </p>
 
-        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-          {/* Mode badge */}
+        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+          {/* Mode badge — subtle when AI, prominent when HUMAN */}
           <span
-            className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+            className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
               conversation.mode === 'AI'
-                ? 'bg-rose-100 text-rose-700'
-                : 'bg-amber-100 text-amber-700'
+                ? 'bg-sky-50 text-sky-700 border border-sky-200'
+                : 'bg-rose-600 text-white'
             }`}
           >
-            {conversation.mode}
+            {conversation.mode === 'AI' ? '✨ AI' : 'HUMAN'}
           </span>
 
-          {/* Awaiting reply badge */}
-          {conversation.needs_human_reply && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-100 text-yellow-700">
-              ⚠ Awaiting reply
+          {/* Suggested reply ready — highest visual priority */}
+          {conversation.suggested_reply && conversation.mode === 'HUMAN' && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+              💡 Reply ready
             </span>
           )}
 
-          {/* Callback required badge */}
+          {/* Callback required */}
           {conversation.callback_required && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-red-100 text-red-700">
-              📞 Call required
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-red-100 text-red-700 border border-red-200">
+              📞 Call
+            </span>
+          )}
+
+          {/* Awaiting reply */}
+          {conversation.needs_human_reply && !conversation.suggested_reply && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-yellow-100 text-yellow-800 border border-yellow-200">
+              ⚠ Awaiting
             </span>
           )}
 
           {/* CRM stage */}
           {conversation.crm_stage_name && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-green-50 text-green-700 border border-green-200">
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
               {conversation.crm_stage_name}
-            </span>
-          )}
-
-          {/* Suggested reply ready */}
-          {conversation.suggested_reply && conversation.mode === 'HUMAN' && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700">
-              💡 Reply ready
             </span>
           )}
 
           {/* Assigned agent */}
           {conversation.assigned_user_name && (
-            <span className="text-[10px] text-slate-400 truncate">
+            <span className="text-[10px] text-slate-500 truncate ml-auto">
               {conversation.assigned_user_name}
             </span>
           )}

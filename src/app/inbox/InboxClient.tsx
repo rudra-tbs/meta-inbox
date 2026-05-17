@@ -52,8 +52,25 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
 
     const res = await fetch(`/api/conversations?${params.toString()}`);
     if (res.ok) {
-      const data = await res.json();
-      setConversations(data);
+      const data = (await res.json()) as Conversation[];
+      // Surface conversations that need attention first:
+      // 1. Suggested reply ready (HUMAN mode awaiting action)
+      // 2. Callback required
+      // 3. Pending human reply
+      // 4. Then by last_message_at desc
+      const sorted = [...data].sort((a, b) => {
+        const priority = (c: Conversation) => {
+          if (c.suggested_reply && c.mode === 'HUMAN') return 3;
+          if (c.callback_required) return 2;
+          if (c.needs_human_reply) return 1;
+          return 0;
+        };
+        const pa = priority(a);
+        const pb = priority(b);
+        if (pa !== pb) return pb - pa;
+        return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime();
+      });
+      setConversations(sorted);
     }
     setLoadingConvs(false);
   }, [activeBrand, activeChannel, statusFilter, stageFilter, search]);

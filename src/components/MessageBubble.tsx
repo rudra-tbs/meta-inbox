@@ -22,8 +22,8 @@ export default function MessageBubble({ message, contactName }: MessageBubblePro
     return (
       <div className="flex justify-start mb-3">
         <div className="max-w-[70%]">
-          <div className="bg-white border border-slate-100 shadow-sm rounded-2xl rounded-tl-none px-4 py-2.5">
-            <p className="text-sm text-slate-800 whitespace-pre-wrap break-words">
+          <div className="bg-white border border-slate-200 shadow-sm rounded-2xl rounded-tl-none px-4 py-2.5">
+            <p className="text-sm text-slate-800 whitespace-pre-wrap break-words leading-relaxed">
               {message.content}
             </p>
           </div>
@@ -39,29 +39,30 @@ export default function MessageBubble({ message, contactName }: MessageBubblePro
     return (
       <div className="flex justify-end mb-3">
         <div className="max-w-[70%]">
-          <div className="bg-rose-500 rounded-2xl rounded-tr-none px-4 py-2.5">
-            <p className="text-sm text-white whitespace-pre-wrap break-words">
+          <div className="bg-slate-100 border border-slate-200 rounded-2xl rounded-tr-none px-4 py-2.5">
+            <p className="text-sm text-slate-800 whitespace-pre-wrap break-words leading-relaxed">
               {message.content}
             </p>
           </div>
-          <p className="text-xs text-rose-300 mt-1 mr-1 text-right">
-            AI · {formatTime(message.created_at)}
+          <p className="text-xs text-slate-400 mt-1 mr-1 text-right inline-flex items-center gap-1 w-full justify-end">
+            <span className="text-sky-500">✨</span>
+            <span>AI · {formatTime(message.created_at)}</span>
           </p>
         </div>
       </div>
     );
   }
 
-  // HUMAN sender
+  // HUMAN sender — brand color, prominent voice
   return (
     <div className="flex justify-end mb-3">
       <div className="max-w-[70%]">
-        <div className="bg-violet-600 rounded-2xl rounded-tr-none px-4 py-2.5">
-          <p className="text-sm text-white whitespace-pre-wrap break-words">
+        <div className="bg-rose-600 shadow-sm rounded-2xl rounded-tr-none px-4 py-2.5">
+          <p className="text-sm text-white whitespace-pre-wrap break-words leading-relaxed">
             {message.content}
           </p>
         </div>
-        <p className="text-xs text-violet-300 mt-1 mr-1 text-right">
+        <p className="text-xs text-rose-400 mt-1 mr-1 text-right">
           {message.sender_name || 'Agent'} · {formatTime(message.created_at)}
         </p>
       </div>
