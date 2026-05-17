@@ -18,6 +18,7 @@ interface ChatWindowProps {
   onConversationUpdate: (updated: Conversation) => void;
   onMessageSent: () => void;
   onBack?: () => void;
+  showChannelTags?: boolean;
 }
 
 function daysSince(isoDate: string | null): number | null {
@@ -77,6 +78,7 @@ export default function ChatWindow({
   onConversationUpdate,
   onMessageSent,
   onBack,
+  showChannelTags,
 }: ChatWindowProps) {
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
@@ -414,7 +416,7 @@ export default function ChatWindow({
               return (
                 <Fragment key={msg.id}>
                   {showDateSeparator && <DateSeparator date={msg.created_at} />}
-                  <MessageBubble message={msg} contactName={conversation.contact_name} />
+                  <MessageBubble message={msg} contactName={conversation.contact_name} showChannel={showChannelTags} />
                 </Fragment>
               );
             })

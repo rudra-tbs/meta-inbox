@@ -1,5 +1,6 @@
 export type Brand = 'TBS' | 'RD';
 export type Channel = 'WA' | 'IG';
+export type ChannelView = Channel | 'ALL';
 export type ConversationMode = 'AI' | 'HUMAN';
 export type ConversationStatus = 'ACTIVE' | 'QUALIFIED' | 'UNQUALIFIED' | 'CLOSED';
 export type ContactStatus = 'ACTIVE' | 'MERGED';
@@ -126,6 +127,9 @@ export interface Message {
   read_at: string | null;
   created_at: string;
   sender_name?: string | null;
+  // Populated only in cross-channel views (e.g. /api/contacts/[id]/messages)
+  channel?: Channel | null;
+  brand?: Brand | null;
 }
 
 export interface SnoozePreset {

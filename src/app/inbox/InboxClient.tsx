@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { AppUser, Conversation, Message, Channel } from '@/types';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import type { AppUser, Conversation, Message, ChannelView } from '@/types';
 import { getSupabaseBrowser } from '@/lib/supabase';
 import BrandRail from '@/components/BrandRail';
 import ChannelTabs from '@/components/ChannelTabs';
 import ConversationList from '@/components/ConversationList';
 import ChatWindow from '@/components/ChatWindow';
+import CommandPalette, { type PaletteAction } from '@/components/CommandPalette';
 
 export type StatusFilter = 'all' | 'AI' | 'HUMAN' | 'QUALIFIED' | 'MINE' | 'PENDING' | 'SNOOZED';
 
@@ -18,7 +19,7 @@ interface InboxClientProps {
 
 export default function InboxClient({ currentUser }: InboxClientProps) {
   const [activeBrand] = useState<'TBS'>('TBS');
-  const [activeChannel] = useState<Channel>('WA');
+  const [activeChannel, setActiveChannel] = useState<ChannelView>('WA');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -30,21 +31,40 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const conversationsRef = useRef<Conversation[]>([]);
   conversationsRef.current = conversations;
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
+  const activeChannelRef = useRef<ChannelView>(activeChannel);
+  activeChannelRef.current = activeChannel;
   const initialLoadDoneRef = useRef(false);
 
   const selectedConversation = conversations.find((c) => c.id === selectedId) ?? null;
+  const isAllChannels = activeChannel === 'ALL';
+
+  // When ALL channels are shown, group conversations by contact so each contact appears once
+  const displayedConversations = useMemo(() => {
+    if (!isAllChannels) return conversations;
+    const byContact = new Map<string, Conversation>();
+    for (const c of conversations) {
+      const key = c.contact_id ?? c.id;
+      const existing = byContact.get(key);
+      if (!existing || new Date(c.last_message_at) > new Date(existing.last_message_at)) {
+        byContact.set(key, c);
+      }
+    }
+    return Array.from(byContact.values()).sort(
+      (a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
+    );
+  }, [conversations, isAllChannels]);
 
   const fetchConversations = useCallback(async () => {
     const params = new URLSearchParams({
       brand: activeBrand,
       channel: activeChannel,
     });
-
     if (statusFilter === 'AI' || statusFilter === 'HUMAN') {
       params.set('mode', statusFilter);
     } else if (statusFilter === 'QUALIFIED') {
@@ -81,13 +101,22 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   }, [activeBrand, activeChannel, statusFilter, tagFilter, stageFilter, search]);
 
   const fetchStages = useCallback(async () => {
-    const res = await fetch(`/api/crm-stages?brand=${activeBrand}&channel=${activeChannel}`);
+    const res = await fetch(`/api/crm-stages?brand=${activeBrand}&channel=${activeChannel === 'ALL' ? 'WA' : activeChannel}`);
     if (res.ok) setStages(await res.json());
   }, [activeBrand, activeChannel]);
 
+  // When ALL channels view is active and a contact is selected, fetch interleaved
+  // messages from all their conversations. Otherwise fetch only the selected conversation's messages.
   const fetchMessages = useCallback(async (conversationId: string) => {
-    const res = await fetch(`/api/conversations/${conversationId}/messages`);
-    if (res.ok) setMessages(await res.json());
+    const inAllView = activeChannelRef.current === 'ALL';
+    const conv = conversationsRef.current.find((c) => c.id === conversationId);
+    if (inAllView && conv?.contact_id) {
+      const res = await fetch(`/api/contacts/${conv.contact_id}/messages`);
+      if (res.ok) setMessages(await res.json());
+    } else {
+      const res = await fetch(`/api/conversations/${conversationId}/messages`);
+      if (res.ok) setMessages(await res.json());
+    }
   }, []);
 
   async function refreshStagesFromCRM() {
@@ -101,7 +130,6 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
     }
   }
 
-  // Browser notifications — ask once on mount
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});
@@ -116,32 +144,32 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
     else setMessages([]);
   }, [selectedId, fetchMessages]);
 
-  // Mark initial load done after first conversations fetch completes
   useEffect(() => {
     if (!loadingConvs) initialLoadDoneRef.current = true;
   }, [loadingConvs]);
 
-  // Realtime
   useEffect(() => {
     const supabase = getSupabaseBrowser();
     const channel = supabase
       .channel('inbox-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'conversations' },
-        () => fetchConversations()
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => fetchConversations())
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'messages' },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (payload: any) => {
           const newMsg = (payload.new ?? payload.old) as Message;
-          if (newMsg && newMsg.conversation_id === selectedIdRef.current) {
-            // Refetch to capture status changes too (delivered/read updates)
-            fetchMessages(newMsg.conversation_id);
+          if (newMsg && selectedIdRef.current) {
+            const selectedConv = conversationsRef.current.find((c) => c.id === selectedIdRef.current);
+            const sameConv = newMsg.conversation_id === selectedIdRef.current;
+            const sameContactInAllView =
+              activeChannelRef.current === 'ALL' &&
+              selectedConv?.contact_id &&
+              conversationsRef.current.some((c) => c.id === newMsg.conversation_id && c.contact_id === selectedConv.contact_id);
+            if (sameConv || sameContactInAllView) {
+              fetchMessages(selectedIdRef.current);
+            }
           }
-          // Browser notification on new INBOUND in another conversation
           if (
             payload.eventType === 'INSERT' &&
             payload.new?.direction === 'INBOUND' &&
@@ -163,29 +191,39 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
     return () => { supabase.removeChannel(channel); };
   }, [fetchConversations, fetchMessages]);
 
-  // Keyboard shortcuts: J/K navigate · T toggle mode · R focus reply · Esc deselect · ? help
+  // Global keyboard shortcuts
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       const target = e.target as HTMLElement;
       const inField = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
+      // ⌘K / Ctrl+K opens palette anywhere
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setPaletteOpen(true);
+        return;
+      }
+
       if (inField && e.key !== 'Escape') return;
+
+      const visibleList = activeChannelRef.current === 'ALL'
+        ? displayedConversationsRef.current
+        : conversationsRef.current;
 
       if (e.key === 'j' || e.key === 'J' || e.key === 'ArrowDown') {
         e.preventDefault();
-        const list = conversationsRef.current;
-        if (list.length === 0) return;
-        const idx = list.findIndex((c) => c.id === selectedIdRef.current);
-        const next = idx < 0 ? 0 : Math.min(idx + 1, list.length - 1);
-        setSelectedId(list[next].id);
+        if (visibleList.length === 0) return;
+        const idx = visibleList.findIndex((c) => c.id === selectedIdRef.current);
+        const next = idx < 0 ? 0 : Math.min(idx + 1, visibleList.length - 1);
+        setSelectedId(visibleList[next].id);
       } else if (e.key === 'k' || e.key === 'K' || e.key === 'ArrowUp') {
         e.preventDefault();
-        const list = conversationsRef.current;
-        if (list.length === 0) return;
-        const idx = list.findIndex((c) => c.id === selectedIdRef.current);
+        if (visibleList.length === 0) return;
+        const idx = visibleList.findIndex((c) => c.id === selectedIdRef.current);
         const prev = idx <= 0 ? 0 : idx - 1;
-        setSelectedId(list[prev].id);
+        setSelectedId(visibleList[prev].id);
       } else if (e.key === 't' || e.key === 'T') {
-        const conv = conversationsRef.current.find((c) => c.id === selectedIdRef.current);
+        const conv = visibleList.find((c) => c.id === selectedIdRef.current);
         if (!conv) return;
         const newMode = conv.mode === 'AI' ? 'HUMAN' : 'AI';
         fetch(`/api/conversations/${conv.id}/mode`, {
@@ -195,10 +233,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
         }).then(() => fetchConversations());
       } else if (e.key === 'r' || e.key === 'R') {
         const ta = document.querySelector('textarea[placeholder*="message" i], textarea[placeholder*="suggestion" i]') as HTMLTextAreaElement | null;
-        if (ta) {
-          e.preventDefault();
-          ta.focus();
-        }
+        if (ta) { e.preventDefault(); ta.focus(); }
       } else if (e.key === 'Escape') {
         if (!inField) setSelectedId(null);
       }
@@ -207,28 +242,86 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
     return () => window.removeEventListener('keydown', handler);
   }, [fetchConversations]);
 
+  // Keep displayedConversations in a ref for keyboard handler
+  const displayedConversationsRef = useRef<Conversation[]>([]);
+  displayedConversationsRef.current = displayedConversations;
+
   function handleConversationUpdate(updatedConv: Conversation) {
     setConversations((prev) => prev.map((c) => (c.id === updatedConv.id ? updatedConv : c)));
   }
 
-  // Distinct tags across loaded conversations
   const tagsInUse = Array.from(new Set(conversations.flatMap((c) => c.tags ?? []))).sort();
+
+  // Command palette actions
+  const paletteActions: PaletteAction[] = [
+    {
+      id: 'toggle-mode',
+      label: 'Toggle AI / Human on selected',
+      hint: 'T',
+      run: ({ selectedConversation }) => {
+        if (!selectedConversation) return;
+        const newMode = selectedConversation.mode === 'AI' ? 'HUMAN' : 'AI';
+        fetch(`/api/conversations/${selectedConversation.id}/mode`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: newMode }),
+        }).then(() => fetchConversations());
+      },
+    },
+    {
+      id: 'snooze-1h',
+      label: 'Snooze selected for 1 hour',
+      run: ({ selectedConversation }) => {
+        if (!selectedConversation) return;
+        const until = new Date(Date.now() + 3600 * 1000).toISOString();
+        fetch(`/api/conversations/${selectedConversation.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ snoozed_until: until }),
+        }).then(() => fetchConversations());
+      },
+    },
+    {
+      id: 'refresh-stages',
+      label: 'Refresh CRM stages',
+      run: () => refreshStagesFromCRM(),
+    },
+    {
+      id: 'go-pending',
+      label: 'Filter: Pending',
+      run: () => setStatusFilter('PENDING'),
+    },
+    {
+      id: 'go-mine',
+      label: 'Filter: Mine',
+      run: () => setStatusFilter('MINE'),
+    },
+    {
+      id: 'go-all',
+      label: 'Filter: All conversations',
+      run: () => { setStatusFilter('all'); setTagFilter(null); setStageFilter(null); },
+    },
+  ];
 
   return (
     <div className="flex h-screen overflow-hidden bg-white">
       <BrandRail activeBrand={activeBrand} />
 
-      {/* Sidebar — hidden on mobile when chat is open */}
       <div
         className={`flex flex-col border-r border-slate-200 bg-white
           ${selectedId && !mobileSidebarOpen ? 'hidden md:flex' : 'flex'}
           w-full md:w-[280px]`}
       >
         <div className="border-b border-slate-200 px-3 pt-3">
-          <ChannelTabs activeChannel={activeChannel} />
+          <ChannelTabs
+            activeChannel={activeChannel}
+            onChange={(c) => {
+              setActiveChannel(c);
+              setSelectedId(null);
+            }}
+          />
         </div>
 
-        {/* Filter strip: tags + stages */}
         {(tagsInUse.length > 0 || stages.length > 0) && (
           <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-100">
             {tagsInUse.length > 0 && (
@@ -263,12 +356,9 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
         )}
 
         <ConversationList
-          conversations={conversations}
+          conversations={displayedConversations}
           selectedId={selectedId}
-          onSelect={(id) => {
-            setSelectedId(id);
-            setMobileSidebarOpen(false);
-          }}
+          onSelect={(id) => { setSelectedId(id); setMobileSidebarOpen(false); }}
           statusFilter={statusFilter}
           setStatusFilter={setStatusFilter}
           search={search}
@@ -289,6 +379,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
             onConversationUpdate={handleConversationUpdate}
             onMessageSent={() => fetchMessages(selectedConversation.id)}
             onBack={() => setMobileSidebarOpen(true)}
+            showChannelTags={isAllChannels}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center">
@@ -296,15 +387,24 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
               <div className="text-5xl mb-4">💬</div>
               <p className="text-sm">Select a conversation to start</p>
               <p className="text-xs mt-3 text-slate-300">
-                Shortcuts: <kbd className="bg-slate-100 px-1 rounded">J</kbd> next ·{' '}
-                <kbd className="bg-slate-100 px-1 rounded">K</kbd> prev ·{' '}
-                <kbd className="bg-slate-100 px-1 rounded">T</kbd> toggle mode ·{' '}
+                <kbd className="bg-slate-100 px-1 rounded">⌘K</kbd> command palette ·{' '}
+                <kbd className="bg-slate-100 px-1 rounded">J</kbd>/<kbd className="bg-slate-100 px-1 rounded">K</kbd> nav ·{' '}
+                <kbd className="bg-slate-100 px-1 rounded">T</kbd> toggle ·{' '}
                 <kbd className="bg-slate-100 px-1 rounded">R</kbd> reply
               </p>
             </div>
           </div>
         )}
       </div>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        conversations={conversations}
+        onSelectConversation={(id) => setSelectedId(id)}
+        selectedConversation={selectedConversation}
+        actions={paletteActions}
+      />
     </div>
   );
 }

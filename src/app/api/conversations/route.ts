@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const brand = searchParams.get('brand') || 'TBS';
   const channel = searchParams.get('channel') || 'WA';
+  const includeAllChannels = channel === 'ALL';
   const mode = searchParams.get('mode');
   const status = searchParams.get('status');
   const mine = searchParams.get('mine') === 'true';
@@ -54,8 +55,8 @@ export async function GET(request: NextRequest) {
       assigned_user:users!assigned_to(name)
     `)
     .eq('brand', brand)
-    .eq('channel', channel)
     .order('last_message_at', { ascending: false });
+  if (!includeAllChannels) query = query.eq('channel', channel);
 
   // Hide snoozed (whose snooze hasn't expired) unless explicitly requested
   if (snoozed) {
@@ -66,7 +67,9 @@ export async function GET(request: NextRequest) {
 
   if (filter) {
     const allowed = filter.allowedBrandChannels as Array<{ brand: string; channel: string }>;
-    const isAllowed = allowed.some((a) => a.brand === brand && a.channel === channel);
+    const isAllowed = includeAllChannels
+      ? allowed.some((a) => a.brand === brand)
+      : allowed.some((a) => a.brand === brand && a.channel === channel);
     if (!isAllowed) return NextResponse.json([]);
     query = query.or(`assigned_to.is.null,assigned_to.eq.${filter.userId}`);
   }
@@ -78,8 +81,15 @@ export async function GET(request: NextRequest) {
   if (stage) query = query.eq('crm_stage_id', parseInt(stage));
   if (tag) query = query.contains('tags', [tag]);
   if (search) {
+    // Full-text search across message content + name/phone
+    const { data: fts } = await supabase
+      .from('messages')
+      .select('conversation_id')
+      .textSearch('search_vector', search, { type: 'websearch', config: 'english' });
+    const ftsIds = Array.from(new Set((fts ?? []).map((m) => m.conversation_id)));
+    const idClause = ftsIds.length > 0 ? `,id.in.(${ftsIds.join(',')})` : '';
     query = query.or(
-      `contact_name.ilike.%${search}%,phone_number.ilike.%${search}%`
+      `contact_name.ilike.%${search}%,phone_number.ilike.%${search}%${idClause}`
     );
   }
 
