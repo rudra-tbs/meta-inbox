@@ -125,7 +125,7 @@ export default function CommandPalette({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-xl bg-white rounded-xl shadow-2xl overflow-hidden"
+        className="w-full max-w-xl bg-elevated rounded-xl shadow-2xl overflow-hidden border border-border-default"
       >
         <input
           ref={inputRef}
@@ -133,11 +133,11 @@ export default function CommandPalette({
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Search conversations or run an action…"
-          className="w-full px-4 py-3 text-sm border-b border-slate-200 focus:outline-none"
+          className="w-full px-4 py-3 text-sm text-text-default placeholder:text-text-muted border-b border-border-default focus:outline-none bg-elevated"
         />
         <ul className="max-h-96 overflow-y-auto">
           {items.length === 0 ? (
-            <li className="px-4 py-8 text-center text-xs text-slate-400">No results</li>
+            <li className="px-4 py-8 text-center text-xs text-text-muted">No results</li>
           ) : (
             items.map((item, i) => (
               <li
@@ -145,30 +145,28 @@ export default function CommandPalette({
                 onMouseEnter={() => setCursor(i)}
                 onClick={() => run(i)}
                 className={`px-4 py-2 cursor-pointer flex items-center justify-between gap-3 ${
-                  i === cursor ? 'bg-rose-50' : 'hover:bg-slate-50'
+                  i === cursor ? 'bg-brand-soft' : 'hover:bg-canvas'
                 }`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-slate-800 truncate">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase mr-2">
+                  <p className="text-sm text-text-primary truncate">
+                    <span className="text-[10px] font-bold text-text-muted uppercase mr-2">
                       {item.kind === 'action' ? '⚡' : '💬'}
                     </span>
                     {item.label}
                   </p>
-                  {item.sub && <p className="text-[11px] text-slate-500 truncate">{item.sub}</p>}
+                  {item.sub && <p className="text-[11px] text-text-secondary truncate">{item.sub}</p>}
                 </div>
-                {i === cursor && <span className="text-[10px] text-slate-400">↵</span>}
+                {i === cursor && <span className="text-[10px] text-text-secondary">↵</span>}
               </li>
             ))
           )}
         </ul>
-        <div className="px-3 py-1.5 border-t border-slate-100 text-[10px] text-slate-400 flex items-center justify-between">
+        <div className="px-3 py-1.5 border-t border-border-subtle text-[10px] text-text-muted flex items-center justify-between bg-canvas">
           <span>
-            <kbd className="bg-slate-100 px-1 rounded">↑↓</kbd> nav ·{' '}
-            <kbd className="bg-slate-100 px-1 rounded">↵</kbd> select ·{' '}
-            <kbd className="bg-slate-100 px-1 rounded">esc</kbd> close
+            <kbd>↑↓</kbd> nav · <kbd>↵</kbd> select · <kbd>esc</kbd> close
           </span>
-          <span>⌘K</span>
+          <span><kbd>⌘K</kbd></span>
         </div>
       </div>
     </div>

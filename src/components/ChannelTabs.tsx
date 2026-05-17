@@ -10,9 +10,9 @@ interface ChannelTabsProps {
 
 export default function ChannelTabs({ activeChannel, onChange, igEnabled = false }: ChannelTabsProps) {
   function tabClass(isActive: boolean, disabled = false) {
-    if (disabled) return 'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 rounded-md cursor-not-allowed';
+    if (disabled) return 'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-disabled rounded-md cursor-not-allowed';
     return `flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-      isActive ? 'text-rose-600 border-b-2 border-rose-600 rounded-none' : 'text-slate-500 hover:text-slate-700'
+      isActive ? 'text-brand border-b-2 border-brand rounded-none' : 'text-text-secondary hover:text-text-primary'
     }`;
   }
 

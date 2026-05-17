@@ -304,15 +304,15 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   ];
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white">
+    <div className="flex h-screen overflow-hidden bg-elevated">
       <BrandRail activeBrand={activeBrand} />
 
       <div
-        className={`flex flex-col border-r border-slate-200 bg-white
+        className={`flex flex-col border-r border-border-default bg-elevated
           ${selectedId && !mobileSidebarOpen ? 'hidden md:flex' : 'flex'}
           w-full md:w-[280px]`}
       >
-        <div className="border-b border-slate-200 px-3 pt-3">
+        <div className="border-b border-border-default px-3 pt-3">
           <ChannelTabs
             activeChannel={activeChannel}
             onChange={(c) => {
@@ -323,12 +323,12 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
         </div>
 
         {(tagsInUse.length > 0 || stages.length > 0) && (
-          <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-100">
+          <div className="flex items-center gap-1 px-3 py-2 border-b border-border-subtle">
             {tagsInUse.length > 0 && (
               <select
                 value={tagFilter ?? ''}
                 onChange={(e) => setTagFilter(e.target.value || null)}
-                className="flex-1 text-[11px] border border-slate-200 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+                className="flex-1 text-[11px] text-text-default border border-border-default rounded px-2 py-1 bg-elevated focus:outline-none focus:ring-2 focus:ring-brand/15 focus:border-border-strong"
               >
                 <option value="">All tags</option>
                 {tagsInUse.map((t) => (<option key={t} value={t}>{t}</option>))}
@@ -338,7 +338,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
               <select
                 value={stageFilter ?? ''}
                 onChange={(e) => setStageFilter(e.target.value ? Number(e.target.value) : null)}
-                className="flex-1 text-[11px] border border-slate-200 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+                className="flex-1 text-[11px] text-text-default border border-border-default rounded px-2 py-1 bg-elevated focus:outline-none focus:ring-2 focus:ring-brand/15 focus:border-border-strong"
               >
                 <option value="">All stages</option>
                 {stages.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
@@ -348,7 +348,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
               onClick={refreshStagesFromCRM}
               disabled={refreshingStages}
               title="Refresh stages from CRM"
-              className="text-[11px] text-slate-500 hover:text-rose-600 px-1.5 py-1 disabled:opacity-50"
+              className="text-[11px] text-text-secondary hover:text-brand px-1.5 py-1 disabled:opacity-50"
             >
               {refreshingStages ? '...' : '↻'}
             </button>
@@ -368,7 +368,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
         />
       </div>
 
-      <div className={`flex-1 flex flex-col bg-[#F9F6F4] overflow-hidden ${selectedId || mobileSidebarOpen ? 'flex' : 'hidden md:flex'}`}>
+      <div className={`flex-1 flex flex-col bg-warm overflow-hidden ${selectedId || mobileSidebarOpen ? 'flex' : 'hidden md:flex'}`}>
         {selectedConversation ? (
           <ChatWindow
             conversation={selectedConversation}
@@ -383,14 +383,14 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
           />
         ) : (
           <div className="flex-1 flex items-center justify-center">
-            <div className="text-center text-slate-400">
+            <div className="text-center text-text-muted">
               <div className="text-5xl mb-4">💬</div>
               <p className="text-sm">Select a conversation to start</p>
-              <p className="text-xs mt-3 text-slate-300">
-                <kbd className="bg-slate-100 px-1 rounded">⌘K</kbd> command palette ·{' '}
-                <kbd className="bg-slate-100 px-1 rounded">J</kbd>/<kbd className="bg-slate-100 px-1 rounded">K</kbd> nav ·{' '}
-                <kbd className="bg-slate-100 px-1 rounded">T</kbd> toggle ·{' '}
-                <kbd className="bg-slate-100 px-1 rounded">R</kbd> reply
+              <p className="text-xs mt-3 text-text-muted">
+                <kbd>⌘K</kbd> command palette ·{' '}
+                <kbd>J</kbd>/<kbd>K</kbd> nav ·{' '}
+                <kbd>T</kbd> toggle ·{' '}
+                <kbd>R</kbd> reply
               </p>
             </div>
           </div>

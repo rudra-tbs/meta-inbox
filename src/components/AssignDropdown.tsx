@@ -61,10 +61,10 @@ export default function AssignDropdown({ conversation, onAssign }: AssignDropdow
           setOpen((o) => !o);
         }}
         disabled={loading}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 transition-colors"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-border-default rounded-md hover:bg-canvas text-text-secondary hover:text-text-primary transition-colors"
       >
         <svg
-          className="w-3 h-3 text-slate-400"
+          className="w-3 h-3 text-text-muted"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -80,10 +80,10 @@ export default function AssignDropdown({ conversation, onAssign }: AssignDropdow
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg min-w-[160px] z-50">
+        <div className="absolute right-0 top-full mt-1 bg-elevated border border-border-default rounded-lg shadow-lg min-w-[160px] z-50">
           <button
             onClick={() => handleAssign(null)}
-            className="w-full text-left px-3 py-2 text-xs text-slate-500 hover:bg-slate-50 border-b border-slate-100"
+            className="w-full text-left px-3 py-2 text-xs text-text-secondary hover:bg-canvas border-b border-border-subtle"
           >
             Unassign
           </button>
@@ -91,7 +91,7 @@ export default function AssignDropdown({ conversation, onAssign }: AssignDropdow
             <button
               key={u.id}
               onClick={() => handleAssign(u.id)}
-              className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+              className="w-full text-left px-3 py-2 text-xs text-text-default hover:bg-canvas"
             >
               {u.name}
             </button>

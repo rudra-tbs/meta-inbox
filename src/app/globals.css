@@ -3,63 +3,65 @@
 @tailwind utilities;
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Design tokens — refined for a premium SaaS workflow tool.
+   Design tokens — WhatsApp-inspired palette.
+   Brand = WhatsApp teal. Outbound bubble = the iconic light green.
+   Surfaces and borders pulled from WhatsApp Web.
    Format: 3 space-separated RGB channels so Tailwind can append /<alpha>.
    ───────────────────────────────────────────────────────────────────────── */
 :root {
-  /* Surfaces — zinc grays (less blue than slate, more neutral) */
-  --surface-canvas:     250 250 250;     /* zinc-50  */
-  --surface-elevated:   255 255 255;
-  --surface-muted:      244 244 245;     /* zinc-100 */
-  --surface-warm:       250 248 246;     /* very faint cream */
-  --surface-inverse:    24 24 27;        /* zinc-900 — for tooltips, dark elements */
+  /* Surfaces */
+  --surface-canvas:     247 248 250;     /* #F7F8FA — sidebar list bg */
+  --surface-elevated:   255 255 255;     /* white */
+  --surface-muted:      240 242 245;     /* #F0F2F5 — WhatsApp web gray */
+  --surface-warm:       239 234 226;     /* #EFEAE2 — classic chat background */
+  --surface-inverse:    17 27 33;        /* #111B21 — WhatsApp dark */
 
-  /* Borders — quieter */
-  --border-default:     228 228 231;     /* zinc-200 */
-  --border-strong:      212 212 216;     /* zinc-300 */
-  --border-subtle:      244 244 245;     /* zinc-100 — barely-there separators */
+  /* Borders */
+  --border-default:     233 237 239;     /* #E9EDEF */
+  --border-strong:      209 215 219;     /* #D1D7DB */
+  --border-subtle:      240 242 245;     /* #F0F2F5 */
 
-  /* Text — proper hierarchy */
-  --text-primary:       24 24 27;        /* zinc-900 — headings */
-  --text-default:       63 63 70;        /* zinc-700 — body */
-  --text-secondary:     113 113 122;     /* zinc-500 — meta */
-  --text-muted:         161 161 170;     /* zinc-400 — timestamps */
-  --text-disabled:      212 212 216;     /* zinc-300 */
+  /* Text — WhatsApp web hierarchy */
+  --text-primary:       17 27 33;        /* #111B21 */
+  --text-default:       59 74 84;        /* #3B4A54 */
+  --text-secondary:     102 119 129;     /* #667781 */
+  --text-muted:         134 150 160;     /* #8696A0 */
+  --text-disabled:      176 186 192;     /* #B0BAC0 */
   --text-inverse:       255 255 255;
 
-  /* Brand — deep, refined rose (rose-700 not rose-600) */
-  --color-brand:        190 18 60;       /* rose-700 — sophisticated, not loud */
-  --color-brand-hover:  159 18 57;       /* rose-800 */
-  --color-brand-soft:   255 241 242;     /* rose-50  */
-  --color-brand-tint:   244 63 94;       /* rose-500 — for fills where -700 too dark */
+  /* Brand — WhatsApp teal */
+  --color-brand:        18 140 126;      /* #128C7E — WhatsApp dark teal */
+  --color-brand-hover:  7 94 84;         /* #075E54 */
+  --color-brand-soft:   231 243 240;     /* pale teal — selected rows, hovers */
+  --color-brand-tint:   217 253 211;     /* #D9FDD3 — iconic outbound bubble green */
 
-  /* Status — muted, desaturated. Used for dots, not loud pills. */
+  /* Status — semantic, used as dots not loud pills */
   --color-success:      4 120 87;        /* emerald-700 */
-  --color-success-soft: 240 253 244;     /* green-50 (warmer than emerald-50) */
+  --color-success-soft: 220 248 198;
   --color-warning:      180 83 9;        /* amber-700 */
-  --color-warning-soft: 255 251 235;     /* amber-50 */
+  --color-warning-soft: 255 251 235;
   --color-danger:       185 28 28;       /* red-700 */
-  --color-danger-soft:  254 242 242;     /* red-50 */
-  --color-info:         71 85 105;       /* slate-600 — neutral gray-blue, not bright sky */
-  --color-info-soft:    248 250 252;     /* slate-50 */
+  --color-danger-soft:  254 242 242;
+  --color-info:         71 85 105;       /* slate-600 */
+  --color-info-soft:    248 250 252;
   --color-snooze:       79 70 229;       /* indigo-600 */
-  --color-snooze-soft:  238 242 255;     /* indigo-50 */
+  --color-snooze-soft:  238 242 255;
 
-  /* Channel disambiguation */
-  --channel-wa:         5 150 105;       /* emerald-600 */
+  /* Channels */
+  --channel-wa:         18 140 126;      /* match brand */
   --channel-ig:         219 39 119;      /* pink-600 */
 
   /* Legacy */
   --background: #ffffff;
-  --foreground: #18181b;
+  --foreground: #111B21;
 }
 
-/* RD brand override */
+/* RD brand override — rose for Revaah Decor */
 [data-brand="RD"] {
-  --color-brand:        4 120 87;        /* emerald-700 */
-  --color-brand-hover:  6 95 70;
-  --color-brand-soft:   240 253 244;
-  --color-brand-tint:   16 185 129;
+  --color-brand:        190 18 60;       /* rose-700 */
+  --color-brand-hover:  159 18 57;       /* rose-800 */
+  --color-brand-soft:   255 241 242;     /* rose-50 */
+  --color-brand-tint:   254 205 211;     /* rose-200 */
 }
 
 body {

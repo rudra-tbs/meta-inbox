@@ -128,13 +128,13 @@ export default function PushToCRMModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+      <div className="bg-elevated rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col border border-border-default">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-          <h2 className="text-base font-semibold text-slate-800">Push to CRM</h2>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border-default">
+          <h2 className="text-base font-semibold text-text-primary">Push to CRM</h2>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 text-xl leading-none"
+            className="text-text-muted hover:text-text-primary text-xl leading-none"
           >
             ×
           </button>
@@ -144,70 +144,70 @@ export default function PushToCRMModal({
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           {/* Client name */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Client name *</label>
+            <label className="block text-[11px] font-medium text-text-secondary mb-1">Client name *</label>
             <input
               type="text"
               value={clientName}
               onChange={(e) => setClientName(e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default placeholder:text-text-muted focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
               placeholder="Full name"
             />
           </div>
 
           {/* Phone (readonly) */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Phone</label>
+            <label className="block text-[11px] font-medium text-text-secondary mb-1">Phone</label>
             <input
               type="text"
               value={`+${conversation.phone_number}`}
               readOnly
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 text-slate-500 cursor-not-allowed"
+              className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-canvas text-text-secondary cursor-not-allowed"
             />
           </div>
 
           {/* City */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">City</label>
+            <label className="block text-[11px] font-medium text-text-secondary mb-1">City</label>
             <input
               type="text"
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default placeholder:text-text-muted focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
               placeholder="Wedding city"
             />
           </div>
 
           {/* Wedding date */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Wedding date</label>
+            <label className="block text-[11px] font-medium text-text-secondary mb-1">Wedding date</label>
             <input
               type="date"
               value={weddingDate}
               onChange={(e) => setWeddingDate(e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default placeholder:text-text-muted focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
             />
           </div>
 
           {/* Guest count */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Guest count</label>
+            <label className="block text-[11px] font-medium text-text-secondary mb-1">Guest count</label>
             <input
               type="text"
               value={guestCount}
               onChange={(e) => setGuestCount(e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default placeholder:text-text-muted focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
               placeholder="e.g. 200"
             />
           </div>
 
           {/* Budget */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Budget (lakhs)</label>
+            <label className="block text-[11px] font-medium text-text-secondary mb-1">Budget (lakhs)</label>
             <input
               type="number"
               value={budget}
               onChange={(e) => setBudget(e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default placeholder:text-text-muted focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
               placeholder="e.g. 15"
               min={0}
             />
@@ -215,11 +215,11 @@ export default function PushToCRMModal({
 
           {/* Service type */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Service type</label>
+            <label className="block text-[11px] font-medium text-text-secondary mb-1">Service type</label>
             <select
               value={serviceType}
               onChange={(e) => setServiceType(e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+              className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default placeholder:text-text-muted focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
             >
               <option value="">— Select —</option>
               <option value="planning-only">Planning only</option>
@@ -230,14 +230,14 @@ export default function PushToCRMModal({
 
           {/* Assign to */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Assign to</label>
+            <label className="block text-[11px] font-medium text-text-secondary mb-1">Assign to</label>
             {loadingUsers ? (
-              <div className="text-xs text-slate-400 py-2">Loading users…</div>
+              <div className="text-xs text-text-muted py-2">Loading users…</div>
             ) : (
               <select
                 value={assignToCRMUserId}
                 onChange={(e) => setAssignToCRMUserId(e.target.value)}
-                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default placeholder:text-text-muted focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
               >
                 <option value="">— Unassigned —</option>
                 {crmUsers.map((u) => (
@@ -251,36 +251,36 @@ export default function PushToCRMModal({
 
           {/* Notes */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
+            <label className="block text-[11px] font-medium text-text-secondary mb-1">Notes</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+              className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default placeholder:text-text-muted focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15 resize-none"
               placeholder="Any notes for the planner…"
             />
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
+            <div className="bg-danger-soft border border-danger/20 rounded-md px-3 py-2 text-xs text-danger">
               {error}
             </div>
           )}
         </form>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-200">
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border-default">
           <button
             type="button"
             onClick={onClose}
-            className="text-sm text-slate-500 hover:text-slate-700 px-4 py-2"
+            className="text-sm text-text-secondary hover:text-text-primary px-4 py-2"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="bg-green-600 text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="bg-brand text-text-inverse text-sm font-medium px-5 py-2 rounded-md hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
           >
             {submitting ? 'Pushing…' : 'Push to CRM'}
           </button>

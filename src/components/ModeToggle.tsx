@@ -32,14 +32,14 @@ export default function ModeToggle({ conversation, onToggle }: ModeToggleProps) 
   }
 
   return (
-    <div className="flex rounded-lg bg-slate-100 p-0.5 gap-0.5">
+    <div className="flex rounded-md bg-muted p-0.5 gap-0.5">
       <button
         onClick={() => handleToggle('AI')}
         disabled={loading}
-        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+        className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
           conversation.mode === 'AI'
-            ? 'bg-rose-500 text-white shadow-sm'
-            : 'text-slate-500 hover:text-slate-700'
+            ? 'bg-elevated text-text-primary shadow-sm'
+            : 'text-text-secondary hover:text-text-primary'
         }`}
       >
         AI
@@ -47,10 +47,10 @@ export default function ModeToggle({ conversation, onToggle }: ModeToggleProps) 
       <button
         onClick={() => handleToggle('HUMAN')}
         disabled={loading}
-        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+        className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
           conversation.mode === 'HUMAN'
-            ? 'bg-amber-400 text-white shadow-sm'
-            : 'text-slate-500 hover:text-slate-700'
+            ? 'bg-elevated text-text-primary shadow-sm'
+            : 'text-text-secondary hover:text-text-primary'
         }`}
       >
         Human

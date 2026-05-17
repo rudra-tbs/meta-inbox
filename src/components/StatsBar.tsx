@@ -33,26 +33,26 @@ export default function StatsBar({ conversations }: StatsBarProps) {
   }, [conversations]);
 
   return (
-    <div className="border-t border-slate-200 p-3">
-      <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-2">
+    <div className="border-t border-border-default p-3">
+      <p className="text-[10px] text-text-muted uppercase tracking-[0.08em] mb-2">
         Today
       </p>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <p className="text-xl font-bold text-slate-700">{todayStats.total}</p>
-          <p className="text-xs text-slate-400">Total</p>
+          <p className="text-xl font-semibold text-text-primary">{todayStats.total}</p>
+          <p className="text-[11px] text-text-muted">Total</p>
         </div>
         <div>
-          <p className="text-xl font-bold text-emerald-600">{todayStats.qualified}</p>
-          <p className="text-xs text-slate-400">Qualified</p>
+          <p className="text-xl font-semibold text-success">{todayStats.qualified}</p>
+          <p className="text-[11px] text-text-muted">Qualified</p>
         </div>
         <div>
-          <p className="text-xl font-bold text-rose-600">{todayStats.aiHandled}</p>
-          <p className="text-xs text-slate-400">AI handled</p>
+          <p className="text-xl font-semibold text-text-default">{todayStats.aiHandled}</p>
+          <p className="text-[11px] text-text-muted">AI handled</p>
         </div>
         <div>
-          <p className="text-xl font-bold text-amber-500">{todayStats.handedOff}</p>
-          <p className="text-xs text-slate-400">Handed off</p>
+          <p className="text-xl font-semibold text-warning">{todayStats.handedOff}</p>
+          <p className="text-[11px] text-text-muted">Handed off</p>
         </div>
       </div>
     </div>

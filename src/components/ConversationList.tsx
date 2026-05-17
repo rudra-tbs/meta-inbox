@@ -34,7 +34,7 @@ export default function ConversationList({
       <div className="px-3 py-2">
         <div className="relative">
           <svg
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -51,7 +51,7 @@ export default function ConversationList({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search conversations..."
-            className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500 bg-slate-50"
+            className="w-full pl-8 pr-3 py-1.5 text-xs text-text-default placeholder:text-text-muted bg-muted border border-transparent rounded-md focus:outline-none focus:bg-elevated focus:border-border-strong focus:ring-2 focus:ring-brand/15 transition-all"
           />
         </div>
       </div>
@@ -62,11 +62,11 @@ export default function ConversationList({
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-20 text-xs text-slate-400">
+          <div className="flex items-center justify-center h-20 text-xs text-text-muted">
             Loading...
           </div>
         ) : conversations.length === 0 ? (
-          <div className="flex items-center justify-center h-20 text-xs text-slate-400">
+          <div className="flex items-center justify-center h-20 text-xs text-text-muted">
             No conversations found
           </div>
         ) : (
