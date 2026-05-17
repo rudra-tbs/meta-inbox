@@ -1,9 +1,11 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { waitUntil } from '@vercel/functions';
 import { createServerClient } from '@/lib/supabase';
 import { resolveConversation } from '@/lib/ai-mode';
 import { handleAIResponse } from '@/lib/ai-handler';
+import { verifyWebhookSignature } from '@/lib/webhook-verify';
 
 // GET: WhatsApp webhook verification
 export async function GET(request: NextRequest) {
@@ -22,8 +24,15 @@ export async function GET(request: NextRequest) {
 // POST: Inbound WhatsApp webhook
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const rawBody = await request.text();
+    const signature = request.headers.get('x-hub-signature-256');
 
+    if (!verifyWebhookSignature(rawBody, signature)) {
+      console.warn('[Webhook] Invalid signature — rejecting');
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+    }
+
+    const body = JSON.parse(rawBody);
     const entry = body?.entry?.[0];
     const changes = entry?.changes?.[0];
     const value = changes?.value;
@@ -34,8 +43,6 @@ export async function POST(request: NextRequest) {
     }
 
     const msg = messages[0];
-
-    // Only handle text messages
     if (msg.type !== 'text') {
       return NextResponse.json({ ok: true });
     }
@@ -43,10 +50,8 @@ export async function POST(request: NextRequest) {
     const fromPhone = msg.from as string;
     const msgId = msg.id as string;
     const textBody = msg.text?.body as string;
-    const contactName =
-      value?.contacts?.[0]?.profile?.name ?? null;
+    const contactName = value?.contacts?.[0]?.profile?.name ?? null;
 
-    // Deduplicate
     const supabase = createServerClient();
     const { data: existing } = await supabase
       .from('messages')
@@ -58,7 +63,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // Resolve conversation and mode
     const { conversation, mode } = await resolveConversation(
       supabase,
       fromPhone,
@@ -67,7 +71,6 @@ export async function POST(request: NextRequest) {
       contactName
     );
 
-    // Insert inbound message
     await supabase.from('messages').insert({
       conversation_id: conversation.id,
       direction: 'INBOUND',
@@ -78,24 +81,23 @@ export async function POST(request: NextRequest) {
       created_at: new Date().toISOString(),
     });
 
-    // Update conversation last_message_at
     await supabase
       .from('conversations')
       .update({ last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', conversation.id);
 
-    console.log(`[Webhook] conversation=${conversation.id} resolved_mode=${mode} → ${mode === 'AI' ? 'calling AI handler' : 'skipping (HUMAN mode)'}`);
+    console.log(`[Webhook] conversation=${conversation.id} resolved_mode=${mode} → handing to AI handler`);
 
-    // Fire AI response async (don't await)
-    if (mode === 'AI') {
+    // Always run AI handler — it decides whether to send or just save as suggestion
+    waitUntil(
       handleAIResponse(supabase, conversation, textBody).catch((err) => {
         console.error('AI handler error:', err);
-      });
-    }
+      })
+    );
 
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('Webhook error:', err);
-    return NextResponse.json({ ok: true }); // Always return 200
+    return NextResponse.json({ ok: true });
   }
 }

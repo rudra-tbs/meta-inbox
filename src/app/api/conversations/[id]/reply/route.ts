@@ -78,6 +78,8 @@ export async function POST(
       last_message_at: now,
       needs_human_reply: false,
       manually_set_human: true,
+      suggested_reply: null,
+      suggested_reply_at: null,
       updated_at: now,
     })
     .eq('id', params.id);

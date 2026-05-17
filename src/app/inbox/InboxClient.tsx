@@ -10,6 +10,8 @@ import ChatWindow from '@/components/ChatWindow';
 
 export type StatusFilter = 'all' | 'AI' | 'HUMAN' | 'QUALIFIED' | 'MINE' | 'PENDING';
 
+interface CRMStage { id: number; name: string }
+
 interface InboxClientProps {
   currentUser: AppUser;
 }
@@ -20,6 +22,9 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [stageFilter, setStageFilter] = useState<number | null>(null);
+  const [stages, setStages] = useState<CRMStage[]>([]);
+  const [refreshingStages, setRefreshingStages] = useState(false);
   const [search, setSearch] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingConvs, setLoadingConvs] = useState(true);
@@ -42,9 +47,8 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
       params.set('pending', 'true');
     }
 
-    if (search) {
-      params.set('search', search);
-    }
+    if (stageFilter != null) params.set('stage', String(stageFilter));
+    if (search) params.set('search', search);
 
     const res = await fetch(`/api/conversations?${params.toString()}`);
     if (res.ok) {
@@ -52,7 +56,15 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
       setConversations(data);
     }
     setLoadingConvs(false);
-  }, [activeBrand, activeChannel, statusFilter, search]);
+  }, [activeBrand, activeChannel, statusFilter, stageFilter, search]);
+
+  const fetchStages = useCallback(async () => {
+    const res = await fetch(`/api/crm-stages?brand=${activeBrand}&channel=${activeChannel}`);
+    if (res.ok) {
+      const data = await res.json();
+      setStages(data);
+    }
+  }, [activeBrand, activeChannel]);
 
   const fetchMessages = useCallback(async (conversationId: string) => {
     const res = await fetch(`/api/conversations/${conversationId}/messages`);
@@ -62,9 +74,24 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
     }
   }, []);
 
+  async function refreshStagesFromCRM() {
+    setRefreshingStages(true);
+    try {
+      await fetch('/api/conversations/refresh-stages', { method: 'POST' });
+      await fetchStages();
+      await fetchConversations();
+    } finally {
+      setRefreshingStages(false);
+    }
+  }
+
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
+
+  useEffect(() => {
+    fetchStages();
+  }, [fetchStages]);
 
   useEffect(() => {
     if (selectedId) {
@@ -74,18 +101,14 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
     }
   }, [selectedId, fetchMessages]);
 
-  // Supabase Realtime
   useEffect(() => {
     const supabase = getSupabaseBrowser();
-
     const channel = supabase
       .channel('inbox-realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'conversations' },
-        () => {
-          fetchConversations();
-        }
+        () => fetchConversations()
       )
       .on(
         'postgres_changes',
@@ -104,7 +127,6 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
         }
       )
       .subscribe();
-
     return () => {
       supabase.removeChannel(channel);
     };
@@ -118,17 +140,37 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-white">
-      {/* Brand Rail */}
       <BrandRail activeBrand={activeBrand} />
 
-      {/* Sidebar */}
       <div className="w-[260px] flex flex-col border-r border-slate-200 bg-white">
-        {/* Channel tabs */}
         <div className="border-b border-slate-200 px-3 pt-3">
           <ChannelTabs activeChannel={activeChannel} />
         </div>
 
-        {/* Conversation list */}
+        {/* Stage filter + refresh */}
+        {stages.length > 0 && (
+          <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-100">
+            <select
+              value={stageFilter ?? ''}
+              onChange={(e) => setStageFilter(e.target.value ? Number(e.target.value) : null)}
+              className="flex-1 text-[11px] border border-slate-200 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+            >
+              <option value="">All stages</option>
+              {stages.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            <button
+              onClick={refreshStagesFromCRM}
+              disabled={refreshingStages}
+              title="Refresh stages from CRM"
+              className="text-[11px] text-slate-500 hover:text-rose-600 px-1.5 py-1 disabled:opacity-50"
+            >
+              {refreshingStages ? '...' : '↻'}
+            </button>
+          </div>
+        )}
+
         <ConversationList
           conversations={conversations}
           selectedId={selectedId}
@@ -142,7 +184,6 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
         />
       </div>
 
-      {/* Chat Panel */}
       <div className="flex-1 flex flex-col bg-[#F9F6F4] overflow-hidden">
         {selectedConversation ? (
           <ChatWindow

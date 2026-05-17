@@ -115,6 +115,20 @@ export default function ConversationItem({
             </span>
           )}
 
+          {/* CRM stage */}
+          {conversation.crm_stage_name && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-green-50 text-green-700 border border-green-200">
+              {conversation.crm_stage_name}
+            </span>
+          )}
+
+          {/* Suggested reply ready */}
+          {conversation.suggested_reply && conversation.mode === 'HUMAN' && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700">
+              💡 Reply ready
+            </span>
+          )}
+
           {/* Assigned agent */}
           {conversation.assigned_user_name && (
             <span className="text-[10px] text-slate-400 truncate">

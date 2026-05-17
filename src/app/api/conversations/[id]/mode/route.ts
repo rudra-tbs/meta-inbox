@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { waitUntil } from '@vercel/functions';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
 import { handleAIResponse } from '@/lib/ai-handler';
@@ -77,9 +78,11 @@ export async function POST(
       .maybeSingle();
 
     if (lastMessage?.direction === 'INBOUND') {
-      handleAIResponse(supabase, updated as Conversation, lastMessage.content).catch((err) => {
-        console.error('AI handler error on mode switch:', err);
-      });
+      waitUntil(
+        handleAIResponse(supabase, updated as Conversation, lastMessage.content).catch((err) => {
+          console.error('AI handler error on mode switch:', err);
+        })
+      );
     }
   }
 

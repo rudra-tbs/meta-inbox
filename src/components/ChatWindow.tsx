@@ -40,22 +40,26 @@ export default function ChatWindow({
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const isHumanMode = conversation.mode === 'HUMAN';
+  const suggestion = conversation.suggested_reply;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Reset draft when switching conversations
+  useEffect(() => {
+    setReply('');
+  }, [conversation.id]);
+
   async function handleSend() {
     if (!reply.trim() || sending) return;
     setSending(true);
-
     try {
       const res = await fetch(`/api/conversations/${conversation.id}/reply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: reply.trim() }),
       });
-
       if (res.ok) {
         setReply('');
         onMessageSent();
@@ -66,6 +70,11 @@ export default function ChatWindow({
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Tab' && !reply && suggestion) {
+      e.preventDefault();
+      setReply(suggestion);
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -75,6 +84,7 @@ export default function ChatWindow({
   const displayName = conversation.contact_name || `+${conversation.phone_number}`;
   const daysSinceLast = daysSince(conversation.last_human_message_at);
   const isNewLead = conversation.is_first_contact;
+  const siblings = conversation.sibling_conversations ?? [];
 
   return (
     <div className="flex flex-col h-full">
@@ -83,21 +93,48 @@ export default function ChatWindow({
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold text-slate-800 truncate">{displayName}</h2>
           <p className="text-xs text-slate-400 truncate">
-            +{conversation.phone_number} ·{' '}
+            {conversation.contact_phone && (
+              <span className="mr-2">📱 +{conversation.contact_phone}</span>
+            )}
+            {!conversation.contact_phone && conversation.phone_number && conversation.channel === 'WA' && (
+              <span className="mr-2">📱 +{conversation.phone_number}</span>
+            )}
+            {conversation.contact_instagram_id && (
+              <span className="mr-2">📷 @{conversation.contact_instagram_id}</span>
+            )}
+            ·{' '}
             {isNewLead
               ? 'New lead'
               : daysSinceLast !== null
               ? `Returning · last active ${daysSinceLast}d ago`
               : 'New lead'}
           </p>
+          {siblings.length > 0 && (
+            <div className="flex items-center gap-1 mt-1">
+              {siblings.map((s) => (
+                <span
+                  key={s.id}
+                  className="text-[10px] font-medium text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded"
+                >
+                  Also on {s.channel === 'WA' ? 'WhatsApp' : 'Instagram'}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* CRM status */}
           {conversation.pushed_to_crm ? (
-            <span className="text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded-full whitespace-nowrap">
-              ✓ In CRM · Deal #{conversation.crm_deal_id}
-            </span>
+            <div className="flex flex-col items-end gap-1">
+              <span className="text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded-full whitespace-nowrap">
+                ✓ In CRM · Deal #{conversation.crm_deal_id}
+              </span>
+              {conversation.crm_stage_name && (
+                <span className="text-[10px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full whitespace-nowrap">
+                  {conversation.crm_stage_name}
+                </span>
+              )}
+            </div>
           ) : (
             <button
               onClick={() => setShowCRMModal(true)}
@@ -165,22 +202,48 @@ export default function ChatWindow({
       {/* Input bar */}
       <div className="bg-white border-t border-slate-200 px-4 py-3">
         {isHumanMode ? (
-          <div className="flex gap-2 items-end">
-            <textarea
-              value={reply}
-              onChange={(e) => setReply(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
-              rows={2}
-              className="flex-1 resize-none text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-            />
-            <button
-              onClick={handleSend}
-              disabled={!reply.trim() || sending}
-              className="bg-rose-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors self-end"
-            >
-              {sending ? '...' : 'Send'}
-            </button>
+          <div className="flex flex-col gap-2">
+            {/* Suggested reply chip — tap or Tab to fill */}
+            {suggestion && !reply && (
+              <button
+                type="button"
+                onClick={() => setReply(suggestion)}
+                className="text-left bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 hover:bg-amber-100 transition-colors"
+              >
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">
+                    💡 Suggested reply
+                  </span>
+                  <span className="text-[10px] text-amber-600 whitespace-nowrap">
+                    Tab or tap to use
+                  </span>
+                </div>
+                <p className="text-xs text-slate-700 line-clamp-3 whitespace-pre-wrap">
+                  {suggestion}
+                </p>
+              </button>
+            )}
+            <div className="flex gap-2 items-end">
+              <textarea
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  suggestion
+                    ? 'Tab to use suggestion, or type your own...'
+                    : 'Type a message... (Enter to send, Shift+Enter for new line)'
+                }
+                rows={2}
+                className="flex-1 resize-none text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+              />
+              <button
+                onClick={handleSend}
+                disabled={!reply.trim() || sending}
+                className="bg-rose-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors self-end"
+              >
+                {sending ? '...' : 'Send'}
+              </button>
+            </div>
           </div>
         ) : (
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-3">

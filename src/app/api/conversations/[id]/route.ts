@@ -36,18 +36,31 @@ export async function GET(
 
   const { data: conversation, error } = await supabase
     .from('conversations')
-    .select('*, assigned_user:users!assigned_to(name)')
+    .select(`
+      *,
+      contact:contacts(name, phone, instagram_id, city, wedding_date, guest_count, budget_range, service_type),
+      assigned_user:users!assigned_to(name)
+    `)
     .eq('id', params.id)
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const assignedUser = (conversation as any).assigned_user;
+  const c = conversation as any;
   return NextResponse.json({
-    ...conversation,
+    ...c,
+    contact: undefined,
     assigned_user: undefined,
-    assigned_user_name: assignedUser?.name ?? null,
+    assigned_user_name: c.assigned_user?.name ?? null,
+    contact_name: c.contact?.name ?? c.contact_name,
+    city: c.contact?.city ?? c.city,
+    wedding_date: c.contact?.wedding_date ?? c.wedding_date,
+    guest_count: c.contact?.guest_count ?? c.guest_count,
+    budget_range: c.contact?.budget_range ?? c.budget_range,
+    service_type: c.contact?.service_type ?? c.service_type,
+    contact_phone: c.contact?.phone ?? null,
+    contact_instagram_id: c.contact?.instagram_id ?? null,
   });
 }
 

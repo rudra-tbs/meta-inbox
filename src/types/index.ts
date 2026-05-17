@@ -2,6 +2,7 @@ export type Brand = 'TBS' | 'RD';
 export type Channel = 'WA' | 'IG';
 export type ConversationMode = 'AI' | 'HUMAN';
 export type ConversationStatus = 'ACTIVE' | 'QUALIFIED' | 'UNQUALIFIED' | 'CLOSED';
+export type ContactStatus = 'ACTIVE' | 'MERGED';
 export type UserRole = 'ADMIN' | 'AGENT';
 
 export interface AppUser {
@@ -20,8 +21,26 @@ export interface UserAccess {
   channel: string;
 }
 
+export interface Contact {
+  id: string;
+  brand: Brand;
+  name: string | null;
+  phone: string | null;
+  instagram_id: string | null;
+  city: string | null;
+  wedding_date: string | null;
+  guest_count: string | null;
+  budget_range: string | null;
+  service_type: string | null;
+  status: ContactStatus;
+  merged_into_contact_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Conversation {
   id: string;
+  contact_id: string | null;
   phone_number: string;
   contact_name: string | null;
   brand: Brand;
@@ -31,6 +50,7 @@ export interface Conversation {
   assigned_to: string | null;
   is_first_contact: boolean;
   ai_reactivation_window_days: number;
+  // Qualification fields (flattened from contact via API join)
   city: string | null;
   wedding_date: string | null;
   guest_count: string | null;
@@ -42,8 +62,12 @@ export interface Conversation {
   instagram_id: string | null;
   pushed_to_crm: boolean;
   crm_deal_id: number | null;
+  crm_stage_id: number | null;
+  crm_stage_name: string | null;
   pushed_to_crm_at: string | null;
   pushed_by_user_id: string | null;
+  suggested_reply: string | null;
+  suggested_reply_at: string | null;
   first_contact_at: string;
   last_message_at: string;
   last_human_message_at: string | null;
@@ -52,6 +76,15 @@ export interface Conversation {
   // Joined fields
   last_message?: string | null;
   assigned_user_name?: string | null;
+  contact_phone?: string | null;
+  contact_instagram_id?: string | null;
+  sibling_conversations?: SiblingConversation[];
+}
+
+export interface SiblingConversation {
+  id: string;
+  channel: Channel;
+  brand: Brand;
 }
 
 export interface Message {
@@ -73,5 +106,7 @@ export interface QualificationData {
   guest_count: string | null;
   budget_range: string | null;
   service_type: string | null;
+  instagram_id: string | null;
+  phone: string | null;
   is_qualified: boolean;
 }

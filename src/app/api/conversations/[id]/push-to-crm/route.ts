@@ -172,11 +172,25 @@ export async function POST(
 
   // 3. Update Supabase conversation
   const now = new Date().toISOString();
+  // Look up the initial stage name from the CRM
+  let initialStageName: string | null = null;
+  try {
+    const stageRows = await queryCRM<{ name: string }[]>(
+      'SELECT name FROM pipeline_stages WHERE id = ? LIMIT 1',
+      [stage_id]
+    );
+    initialStageName = stageRows[0]?.name ?? null;
+  } catch (err) {
+    console.warn('[Push CRM] Could not resolve stage name:', err);
+  }
+
   const { error: updateErr } = await supabase
     .from('conversations')
     .update({
       pushed_to_crm: true,
       crm_deal_id: crmDealId,
+      crm_stage_id: stage_id,
+      crm_stage_name: initialStageName,
       pushed_to_crm_at: now,
       pushed_by_user_id: appUser.id,
       updated_at: now,

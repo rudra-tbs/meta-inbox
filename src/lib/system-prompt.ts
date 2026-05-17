@@ -26,6 +26,11 @@ RULES:
 - Never invent prices, availability, or package details.
 - ABSTAIN rule: if the lead asks about specific pricing, package costs, vendor availability, exact timelines, or anything outside your knowledge, respond with ONLY the single word ABSTAIN — no other text, no qualification_data block.
 
+IDENTIFIER EXTRACTION:
+- If the lead mentions their Instagram handle (e.g. "follow me @rudra_bride" or "my insta is @xyz"), extract it (without the @) into the qualification_data instagram_id field.
+- If the lead shares a phone number different from this conversation, extract it into the qualification_data phone field.
+- Only fill these fields when the lead explicitly shares them. Otherwise leave null.
+
 At the end of EVERY reply (except ABSTAIN responses), append this JSON block (invisible to lead — stripped before sending):
 <qualification_data>
 {
@@ -35,6 +40,8 @@ At the end of EVERY reply (except ABSTAIN responses), append this JSON block (in
   "guest_count": "string or null",
   "budget_range": "string or null",
   "service_type": "string or null",
+  "instagram_id": "string or null",
+  "phone": "string or null",
   "is_qualified": true or false
 }
 </qualification_data>`;

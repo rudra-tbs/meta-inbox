@@ -38,32 +38,26 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get('status');
   const mine = searchParams.get('mine') === 'true';
   const pending = searchParams.get('pending') === 'true';
+  const stage = searchParams.get('stage');
   const search = searchParams.get('search');
 
-  // Get access filter
   const filter = await getConversationFilter(appUser.id);
 
   let query = supabase
     .from('conversations')
     .select(`
       *,
+      contact:contacts(name, phone, instagram_id, city, wedding_date, guest_count, budget_range, service_type),
       assigned_user:users!assigned_to(name)
     `)
     .eq('brand', brand)
     .eq('channel', channel)
     .order('last_message_at', { ascending: false });
 
-  // Apply access control for agents
   if (filter) {
     const allowed = filter.allowedBrandChannels as Array<{ brand: string; channel: string }>;
-    const isAllowed = allowed.some(
-      (a) => a.brand === brand && a.channel === channel
-    );
-    if (!isAllowed) {
-      return NextResponse.json([]);
-    }
-
-    // Agents see unassigned + assigned to them
+    const isAllowed = allowed.some((a) => a.brand === brand && a.channel === channel);
+    if (!isAllowed) return NextResponse.json([]);
     query = query.or(`assigned_to.is.null,assigned_to.eq.${filter.userId}`);
   }
 
@@ -71,7 +65,7 @@ export async function GET(request: NextRequest) {
   if (status) query = query.eq('status', status);
   if (mine) query = query.eq('assigned_to', appUser.id);
   if (pending) query = query.or('needs_human_reply.eq.true,callback_required.eq.true');
-
+  if (stage) query = query.eq('crm_stage_id', parseInt(stage));
   if (search) {
     query = query.or(
       `contact_name.ilike.%${search}%,phone_number.ilike.%${search}%`
@@ -79,22 +73,17 @@ export async function GET(request: NextRequest) {
   }
 
   const { data: conversations, error } = await query;
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  // Fetch last message for each conversation
+  // Fetch last message per conversation
   const convIds = (conversations ?? []).map((c) => c.id);
   const lastMessages: Record<string, string> = {};
-
   if (convIds.length > 0) {
     const { data: msgs } = await supabase
       .from('messages')
       .select('conversation_id, content, created_at')
       .in('conversation_id', convIds)
       .order('created_at', { ascending: false });
-
     if (msgs) {
       for (const m of msgs) {
         if (!lastMessages[m.conversation_id]) {
@@ -104,14 +93,49 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const result = (conversations ?? []).map((c) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const assignedUser = c.assigned_user as any;
+  // Fetch sibling conversations (same contact, other channel)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contactIds = (conversations ?? []).map((c: any) => c.contact_id).filter(Boolean);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const siblings: Record<string, Array<{ id: string; channel: string; brand: string }>> = {};
+  if (contactIds.length > 0) {
+    const { data: allConvs } = await supabase
+      .from('conversations')
+      .select('id, contact_id, brand, channel')
+      .in('contact_id', contactIds);
+    if (allConvs) {
+      for (const sc of allConvs) {
+        if (!convIds.includes(sc.id)) continue; // safety
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const sc of allConvs as any[]) {
+        if (!siblings[sc.contact_id]) siblings[sc.contact_id] = [];
+        siblings[sc.contact_id].push({ id: sc.id, channel: sc.channel, brand: sc.brand });
+      }
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (conversations ?? []).map((c: any) => {
+    const contact = c.contact;
+    const assignedUser = c.assigned_user;
+    const contactSiblings = (siblings[c.contact_id] ?? []).filter((s) => s.id !== c.id);
     return {
       ...c,
+      contact: undefined,
       assigned_user: undefined,
       last_message: lastMessages[c.id] ?? null,
       assigned_user_name: assignedUser?.name ?? null,
+      // Flatten contact qualification fields onto conversation
+      contact_name: contact?.name ?? c.contact_name,
+      city: contact?.city ?? c.city,
+      wedding_date: contact?.wedding_date ?? c.wedding_date,
+      guest_count: contact?.guest_count ?? c.guest_count,
+      budget_range: contact?.budget_range ?? c.budget_range,
+      service_type: contact?.service_type ?? c.service_type,
+      contact_phone: contact?.phone ?? null,
+      contact_instagram_id: contact?.instagram_id ?? null,
+      sibling_conversations: contactSiblings,
     };
   });
 
