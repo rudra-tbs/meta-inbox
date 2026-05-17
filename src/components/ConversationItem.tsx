@@ -1,7 +1,7 @@
 'use client';
 
 import type { Conversation } from '@/types';
-import Badge from './ui/Badge';
+import Dot from './ui/Dot';
 
 interface ConversationItemProps {
   conversation: Conversation;
@@ -10,8 +10,8 @@ interface ConversationItemProps {
 }
 
 const AVATAR_COLORS = [
-  'bg-rose-400', 'bg-pink-400', 'bg-purple-400', 'bg-violet-400',
-  'bg-indigo-400', 'bg-sky-400', 'bg-teal-400', 'bg-amber-400',
+  'bg-rose-300', 'bg-pink-300', 'bg-purple-300', 'bg-violet-300',
+  'bg-indigo-300', 'bg-sky-300', 'bg-teal-300', 'bg-amber-300',
 ];
 
 function getAvatarColor(str: string): string {
@@ -33,7 +33,7 @@ function timeAgo(isoDate: string): string {
   const now = new Date();
   const then = new Date(isoDate);
   const diff = Math.floor((now.getTime() - then.getTime()) / 1000);
-  if (diff < 60) return 'just now';
+  if (diff < 60) return 'now';
   if (diff < 3600) return `${Math.floor(diff / 60)}m`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
   if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
@@ -51,68 +51,72 @@ export default function ConversationItem({
   const isSnoozed = conversation.snoozed_until && new Date(conversation.snoozed_until) > new Date();
   const score = conversation.lead_score ?? 0;
 
+  // Single priority indicator — most urgent wins
+  const indicator: { tone: 'warning' | 'danger' | 'snooze' | null; label: string } =
+    conversation.suggested_reply && conversation.mode === 'HUMAN' ? { tone: 'warning', label: 'Reply ready' }
+    : conversation.callback_required ? { tone: 'danger', label: 'Call required' }
+    : conversation.needs_human_reply ? { tone: 'warning', label: 'Awaiting reply' }
+    : isSnoozed ? { tone: 'snooze', label: 'Snoozed' }
+    : { tone: null, label: '' };
+
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-3 py-3 flex gap-3 transition-colors hover:bg-canvas
-        ${selected ? 'bg-brand-soft border-l-2 border-l-brand' : 'border-l-2 border-l-transparent'}`}
+      className={`group w-full text-left px-4 py-2.5 flex gap-3 transition-colors
+        ${selected
+          ? 'bg-brand-soft'
+          : 'hover:bg-canvas'}`}
     >
       {/* Avatar */}
-      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${colorClass}`}>
-        {initials}
+      <div className="relative flex-shrink-0">
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-[11px] font-medium ${colorClass}`}>
+          {initials}
+        </div>
+        {indicator.tone && (
+          <span className="absolute -bottom-0.5 -right-0.5 ring-2 ring-elevated rounded-full">
+            <Dot tone={indicator.tone} pulse={indicator.tone === 'warning' || indicator.tone === 'danger'} />
+          </span>
+        )}
       </div>
 
+      {/* Content */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-baseline justify-between gap-1">
-          <span className="text-sm font-medium text-text-primary truncate inline-flex items-center gap-1">
-            {score >= 60 && <span title={`Lead score ${score}`} className="text-xs">🔥</span>}
+        <div className="flex items-baseline justify-between gap-1.5">
+          <span className={`text-[13px] truncate ${selected ? 'text-text-primary font-semibold' : 'text-text-primary font-medium'}`}>
             {displayName}
+            {score >= 60 && <span className="ml-1 text-[11px]" title={`Lead score ${score}`}>🔥</span>}
           </span>
-          <span className="text-xs text-text-muted flex-shrink-0">
+          <span className="text-[11px] text-text-muted flex-shrink-0 tabular-nums">
             {timeAgo(conversation.last_message_at)}
           </span>
         </div>
 
-        <p className="text-xs text-text-secondary truncate mt-0.5">
+        <p className="text-[12px] text-text-secondary truncate mt-0.5 leading-tight">
           {conversation.last_message || 'No messages yet'}
         </p>
 
-        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-          {/* Mode — HUMAN filled brand, AI soft info */}
-          {conversation.mode === 'HUMAN' ? (
-            <Badge tone="brand" filled>HUMAN</Badge>
-          ) : (
-            <Badge tone="ai">✨ AI</Badge>
-          )}
-
-          {conversation.suggested_reply && conversation.mode === 'HUMAN' && (
-            <Badge tone="warning">💡 Reply ready</Badge>
-          )}
-
-          {conversation.callback_required && (
-            <Badge tone="danger">📞 Call</Badge>
-          )}
-
-          {conversation.needs_human_reply && !conversation.suggested_reply && (
-            <Badge tone="warning">⚠ Awaiting</Badge>
-          )}
-
-          {isSnoozed && <Badge tone="snooze">💤</Badge>}
-
-          {conversation.crm_stage_name && (
-            <Badge tone="success">{conversation.crm_stage_name}</Badge>
-          )}
-
-          {(conversation.tags ?? []).slice(0, 2).map((t) => (
-            <Badge key={t} tone="neutral">{t}</Badge>
-          ))}
-
-          {conversation.assigned_user_name && (
-            <span className="text-[10px] text-text-muted truncate ml-auto">
-              {conversation.assigned_user_name}
-            </span>
-          )}
-        </div>
+        {/* Subtle metadata row — only when there's something to show */}
+        {(conversation.mode === 'HUMAN' ||
+          conversation.crm_stage_name ||
+          conversation.assigned_user_name ||
+          (conversation.tags ?? []).length > 0) && (
+          <div className="flex items-center gap-2 mt-1.5 text-[11px] text-text-muted">
+            {conversation.mode === 'HUMAN' && (
+              <span className="inline-flex items-center gap-1 text-text-secondary">
+                <Dot tone="brand" /> Human
+              </span>
+            )}
+            {conversation.crm_stage_name && (
+              <span className="truncate">{conversation.crm_stage_name}</span>
+            )}
+            {(conversation.tags ?? []).slice(0, 2).map((t) => (
+              <span key={t} className="truncate">#{t}</span>
+            ))}
+            {conversation.assigned_user_name && (
+              <span className="ml-auto truncate text-text-secondary">{conversation.assigned_user_name}</span>
+            )}
+          </div>
+        )}
       </div>
     </button>
   );

@@ -3,70 +3,89 @@
 @tailwind utilities;
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Design tokens — single source of truth for color across the app.
+   Design tokens — refined for a premium SaaS workflow tool.
    Format: 3 space-separated RGB channels so Tailwind can append /<alpha>.
    ───────────────────────────────────────────────────────────────────────── */
 :root {
-  /* Surfaces */
-  --surface-canvas:     248 250 252;     /* slate-50  — sidebar/list bg */
-  --surface-elevated:   255 255 255;     /* white     — cards, panels   */
-  --surface-muted:      241 245 249;     /* slate-100 — AI bubble, inputs */
-  --surface-warm:       249 246 244;     /* cream     — chat area       */
+  /* Surfaces — zinc grays (less blue than slate, more neutral) */
+  --surface-canvas:     250 250 250;     /* zinc-50  */
+  --surface-elevated:   255 255 255;
+  --surface-muted:      244 244 245;     /* zinc-100 */
+  --surface-warm:       250 248 246;     /* very faint cream */
+  --surface-inverse:    24 24 27;        /* zinc-900 — for tooltips, dark elements */
 
-  /* Borders */
-  --border-default:     226 232 240;     /* slate-200 */
-  --border-strong:      203 213 225;     /* slate-300 */
+  /* Borders — quieter */
+  --border-default:     228 228 231;     /* zinc-200 */
+  --border-strong:      212 212 216;     /* zinc-300 */
+  --border-subtle:      244 244 245;     /* zinc-100 — barely-there separators */
 
-  /* Text */
-  --text-primary:       30 41 59;        /* slate-800 */
-  --text-secondary:     100 116 139;     /* slate-500 */
-  --text-muted:         148 163 184;     /* slate-400 */
-  --text-disabled:      203 213 225;     /* slate-300 */
+  /* Text — proper hierarchy */
+  --text-primary:       24 24 27;        /* zinc-900 — headings */
+  --text-default:       63 63 70;        /* zinc-700 — body */
+  --text-secondary:     113 113 122;     /* zinc-500 — meta */
+  --text-muted:         161 161 170;     /* zinc-400 — timestamps */
+  --text-disabled:      212 212 216;     /* zinc-300 */
   --text-inverse:       255 255 255;
 
-  /* Semantic palette */
-  --color-brand:        225 29 72;       /* rose-600  — TBS primary */
-  --color-brand-hover:  190 18 60;       /* rose-700  */
-  --color-brand-soft:   255 241 242;     /* rose-50   */
-  --color-success:      5 150 105;       /* emerald-600 */
-  --color-success-soft: 236 253 245;     /* emerald-50 */
-  --color-warning:      245 158 11;      /* amber-500 */
-  --color-warning-soft: 255 251 235;     /* amber-50  */
-  --color-danger:       220 38 38;       /* red-600   */
-  --color-danger-soft:  254 242 242;     /* red-50    */
-  --color-info:         14 165 233;      /* sky-500   */
-  --color-info-soft:    240 249 255;     /* sky-50    */
-  --color-snooze:       99 102 241;      /* indigo-500 */
+  /* Brand — deep, refined rose (rose-700 not rose-600) */
+  --color-brand:        190 18 60;       /* rose-700 — sophisticated, not loud */
+  --color-brand-hover:  159 18 57;       /* rose-800 */
+  --color-brand-soft:   255 241 242;     /* rose-50  */
+  --color-brand-tint:   244 63 94;       /* rose-500 — for fills where -700 too dark */
+
+  /* Status — muted, desaturated. Used for dots, not loud pills. */
+  --color-success:      4 120 87;        /* emerald-700 */
+  --color-success-soft: 240 253 244;     /* green-50 (warmer than emerald-50) */
+  --color-warning:      180 83 9;        /* amber-700 */
+  --color-warning-soft: 255 251 235;     /* amber-50 */
+  --color-danger:       185 28 28;       /* red-700 */
+  --color-danger-soft:  254 242 242;     /* red-50 */
+  --color-info:         71 85 105;       /* slate-600 — neutral gray-blue, not bright sky */
+  --color-info-soft:    248 250 252;     /* slate-50 */
+  --color-snooze:       79 70 229;       /* indigo-600 */
   --color-snooze-soft:  238 242 255;     /* indigo-50 */
 
   /* Channel disambiguation */
-  --channel-wa:         16 185 129;      /* emerald-500 */
-  --channel-ig:         236 72 153;      /* pink-500   */
+  --channel-wa:         5 150 105;       /* emerald-600 */
+  --channel-ig:         219 39 119;      /* pink-600 */
 
-  /* Legacy aliases — kept temporarily so unmigrated code still works */
+  /* Legacy */
   --background: #ffffff;
-  --foreground: #0f172a;
+  --foreground: #18181b;
 }
 
-/* RD brand override — flip primary when html data-brand="RD" */
+/* RD brand override */
 [data-brand="RD"] {
-  --color-brand:        5 150 105;       /* emerald-600 */
-  --color-brand-hover:  4 120 87;        /* emerald-700 */
-  --color-brand-soft:   236 253 245;     /* emerald-50  */
+  --color-brand:        4 120 87;        /* emerald-700 */
+  --color-brand-hover:  6 95 70;
+  --color-brand-soft:   240 253 244;
+  --color-brand-tint:   16 185 129;
 }
 
 body {
-  color: rgb(var(--text-primary));
+  color: rgb(var(--text-default));
   background: rgb(var(--surface-elevated));
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';   /* Inter stylistic alts */
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* Subtle scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: rgb(var(--border-strong)) transparent;
 }
-
-*::-webkit-scrollbar { width: 5px; height: 5px; }
+*::-webkit-scrollbar { width: 6px; height: 6px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 99px; }
-*::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; }
+*::-webkit-scrollbar-thumb { background-color: rgb(var(--border-strong)); border-radius: 99px; }
+*::-webkit-scrollbar-thumb:hover { background-color: rgb(var(--text-muted)); }
+
+/* Keyboard hint */
+kbd {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.7rem;
+  background: rgb(var(--surface-muted));
+  border: 1px solid rgb(var(--border-default));
+  border-radius: 4px;
+  padding: 1px 4px;
+}
