@@ -1,6 +1,6 @@
 'use client';
 
-export type StatusFilter = 'all' | 'AI' | 'HUMAN' | 'QUALIFIED' | 'MINE' | 'PENDING';
+export type StatusFilter = 'all' | 'AI' | 'HUMAN' | 'QUALIFIED' | 'MINE' | 'PENDING' | 'SNOOZED';
 
 interface FilterPillsProps {
   value: StatusFilter;
@@ -9,11 +9,12 @@ interface FilterPillsProps {
 
 const PILLS: { label: string; value: StatusFilter }[] = [
   { label: 'All', value: 'all' },
+  { label: 'Pending', value: 'PENDING' },
+  { label: 'Mine', value: 'MINE' },
   { label: 'AI', value: 'AI' },
   { label: 'Human', value: 'HUMAN' },
   { label: 'Qualified', value: 'QUALIFIED' },
-  { label: 'Mine', value: 'MINE' },
-  { label: 'Pending', value: 'PENDING' },
+  { label: '💤 Snoozed', value: 'SNOOZED' },
 ];
 
 export default function FilterPills({ value, onChange }: FilterPillsProps) {

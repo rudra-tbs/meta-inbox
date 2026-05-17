@@ -1,4 +1,4 @@
-export async function sendWhatsAppMessage(to: string, text: string): Promise<void> {
+export async function sendWhatsAppMessage(to: string, text: string): Promise<string | null> {
   const url = `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
   const res = await fetch(url, {
     method: 'POST',
@@ -25,4 +25,6 @@ export async function sendWhatsAppMessage(to: string, text: string): Promise<voi
     console.error(`[WhatsApp] Full error:`, JSON.stringify(err));
     throw new Error(`WhatsApp send failed: ${errMsg} (code ${errCode})`);
   }
+  const data = await res.json();
+  return data?.messages?.[0]?.id ?? null;
 }

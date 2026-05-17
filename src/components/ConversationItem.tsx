@@ -77,7 +77,10 @@ export default function ConversationItem({
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline justify-between gap-1">
-          <span className="text-sm font-medium text-slate-800 truncate">
+          <span className="text-sm font-medium text-slate-800 truncate inline-flex items-center gap-1">
+            {(conversation.lead_score ?? 0) >= 60 && (
+              <span title={`Lead score ${conversation.lead_score}`} className="text-xs">🔥</span>
+            )}
             {displayName}
           </span>
           <span className="text-xs text-slate-400 flex-shrink-0">
@@ -122,12 +125,26 @@ export default function ConversationItem({
             </span>
           )}
 
+          {/* Snoozed */}
+          {conversation.snoozed_until && new Date(conversation.snoozed_until) > new Date() && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+              💤
+            </span>
+          )}
+
           {/* CRM stage */}
           {conversation.crm_stage_name && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
               {conversation.crm_stage_name}
             </span>
           )}
+
+          {/* User-defined tags */}
+          {(conversation.tags ?? []).slice(0, 2).map((t) => (
+            <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">
+              {t}
+            </span>
+          ))}
 
           {/* Assigned agent */}
           {conversation.assigned_user_name && (

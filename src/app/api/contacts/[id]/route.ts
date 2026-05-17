@@ -5,14 +5,12 @@ import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
-import { logEvent } from '@/lib/activity';
 
-export async function POST(
+export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const cookieStore = cookies();
-
   const supabaseAuth = createSupabaseSSR(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -36,45 +34,18 @@ export async function POST(
   if (!appUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json();
-  const { userId } = body as { userId: string | null };
+  const allowed = ['notes', 'name'] as const;
+  type Field = typeof allowed[number];
 
-  // Access control: agents can only self-assign or unassign themselves
-  if (appUser.role === 'AGENT') {
-    if (userId !== null && userId !== appUser.id) {
-      return NextResponse.json({ error: 'Agents can only self-assign' }, { status: 403 });
-    }
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  for (const f of allowed) {
+    if (f in body) updates[f] = body[f as Field];
+  }
+  if (Object.keys(updates).length === 1) {
+    return NextResponse.json({ error: 'No valid fields' }, { status: 400 });
   }
 
-  const now = new Date().toISOString();
-
-  // Get assigned user name for response
-  let assignedUserName: string | null = null;
-  if (userId) {
-    const { data: assignedUser } = await supabase
-      .from('users')
-      .select('name')
-      .eq('id', userId)
-      .single();
-    assignedUserName = assignedUser?.name ?? null;
-  }
-
-  const { data: updated, error } = await supabase
-    .from('conversations')
-    .update({ assigned_to: userId, updated_at: now })
-    .eq('id', params.id)
-    .select('*')
-    .single();
-
+  const { error } = await supabase.from('contacts').update(updates).eq('id', params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  await logEvent(supabase, params.id, 'ASSIGNED', {
-    actorUserId: appUser.id,
-    actorName: appUser.name,
-    metadata: { assigned_to: userId, assigned_name: assignedUserName },
-  });
-
-  return NextResponse.json({
-    ...updated,
-    assigned_user_name: assignedUserName,
-  });
+  return NextResponse.json({ ok: true });
 }

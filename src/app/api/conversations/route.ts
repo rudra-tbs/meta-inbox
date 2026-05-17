@@ -5,6 +5,7 @@ import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId, getConversationFilter } from '@/lib/auth';
+import { computeLeadScore } from '@/lib/lead-score';
 
 export async function GET(request: NextRequest) {
   const cookieStore = cookies();
@@ -38,6 +39,8 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get('status');
   const mine = searchParams.get('mine') === 'true';
   const pending = searchParams.get('pending') === 'true';
+  const snoozed = searchParams.get('snoozed') === 'true';
+  const tag = searchParams.get('tag');
   const stage = searchParams.get('stage');
   const search = searchParams.get('search');
 
@@ -47,12 +50,19 @@ export async function GET(request: NextRequest) {
     .from('conversations')
     .select(`
       *,
-      contact:contacts(name, phone, instagram_id, city, wedding_date, guest_count, budget_range, service_type),
+      contact:contacts(name, phone, instagram_id, city, wedding_date, guest_count, budget_range, service_type, notes),
       assigned_user:users!assigned_to(name)
     `)
     .eq('brand', brand)
     .eq('channel', channel)
     .order('last_message_at', { ascending: false });
+
+  // Hide snoozed (whose snooze hasn't expired) unless explicitly requested
+  if (snoozed) {
+    query = query.not('snoozed_until', 'is', null).gte('snoozed_until', new Date().toISOString());
+  } else {
+    query = query.or(`snoozed_until.is.null,snoozed_until.lte.${new Date().toISOString()}`);
+  }
 
   if (filter) {
     const allowed = filter.allowedBrandChannels as Array<{ brand: string; channel: string }>;
@@ -66,6 +76,7 @@ export async function GET(request: NextRequest) {
   if (mine) query = query.eq('assigned_to', appUser.id);
   if (pending) query = query.or('needs_human_reply.eq.true,callback_required.eq.true');
   if (stage) query = query.eq('crm_stage_id', parseInt(stage));
+  if (tag) query = query.contains('tags', [tag]);
   if (search) {
     query = query.or(
       `contact_name.ilike.%${search}%,phone_number.ilike.%${search}%`
@@ -75,19 +86,23 @@ export async function GET(request: NextRequest) {
   const { data: conversations, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Fetch last message per conversation
+  // Fetch last message + inbound count per conversation
   const convIds = (conversations ?? []).map((c) => c.id);
   const lastMessages: Record<string, string> = {};
+  const inboundCounts: Record<string, number> = {};
   if (convIds.length > 0) {
     const { data: msgs } = await supabase
       .from('messages')
-      .select('conversation_id, content, created_at')
+      .select('conversation_id, content, direction, created_at')
       .in('conversation_id', convIds)
       .order('created_at', { ascending: false });
     if (msgs) {
       for (const m of msgs) {
         if (!lastMessages[m.conversation_id]) {
           lastMessages[m.conversation_id] = m.content;
+        }
+        if (m.direction === 'INBOUND') {
+          inboundCounts[m.conversation_id] = (inboundCounts[m.conversation_id] ?? 0) + 1;
         }
       }
     }
@@ -135,7 +150,16 @@ export async function GET(request: NextRequest) {
       service_type: contact?.service_type ?? c.service_type,
       contact_phone: contact?.phone ?? null,
       contact_instagram_id: contact?.instagram_id ?? null,
+      contact_notes: contact?.notes ?? null,
       sibling_conversations: contactSiblings,
+      lead_score: computeLeadScore({
+        budget_range: contact?.budget_range ?? c.budget_range,
+        wedding_date: contact?.wedding_date ?? c.wedding_date,
+        guest_count: contact?.guest_count ?? c.guest_count,
+        service_type: contact?.service_type ?? c.service_type,
+        city: contact?.city ?? c.city,
+        inbound_count: inboundCounts[c.id] ?? 0,
+      }),
     };
   });
 

@@ -37,6 +37,28 @@ export async function POST(request: NextRequest) {
     const changes = entry?.changes?.[0];
     const value = changes?.value;
     const messages = value?.messages;
+    const statuses = value?.statuses;
+
+    // Status updates (delivered / read) — update existing messages
+    if (statuses && statuses.length > 0) {
+      const supabase = createServerClient();
+      for (const s of statuses) {
+        const waId = s.id as string;
+        const status = s.status as string;
+        const ts = s.timestamp ? new Date(parseInt(s.timestamp) * 1000).toISOString() : new Date().toISOString();
+        const updates: Record<string, unknown> = {};
+        if (status === 'delivered') updates.delivered_at = ts;
+        if (status === 'read') {
+          updates.read_at = ts;
+          // 'read' implies 'delivered' too
+          updates.delivered_at = ts;
+        }
+        if (Object.keys(updates).length > 0) {
+          await supabase.from('messages').update(updates).eq('whatsapp_message_id', waId);
+        }
+      }
+      return NextResponse.json({ ok: true });
+    }
 
     if (!messages || messages.length === 0) {
       return NextResponse.json({ ok: true });

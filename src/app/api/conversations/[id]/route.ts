@@ -5,6 +5,7 @@ import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
+import { logEvent } from '@/lib/activity';
 
 export async function GET(
   _request: NextRequest,
@@ -38,7 +39,7 @@ export async function GET(
     .from('conversations')
     .select(`
       *,
-      contact:contacts(name, phone, instagram_id, city, wedding_date, guest_count, budget_range, service_type),
+      contact:contacts(id, name, phone, instagram_id, city, wedding_date, guest_count, budget_range, service_type, notes),
       assigned_user:users!assigned_to(name)
     `)
     .eq('id', params.id)
@@ -61,6 +62,7 @@ export async function GET(
     service_type: c.contact?.service_type ?? c.service_type,
     contact_phone: c.contact?.phone ?? null,
     contact_instagram_id: c.contact?.instagram_id ?? null,
+    contact_notes: c.contact?.notes ?? null,
   });
 }
 
@@ -93,7 +95,7 @@ export async function PATCH(
   if (!appUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json();
-  const allowed = ['callback_required', 'needs_human_reply'] as const;
+  const allowed = ['callback_required', 'needs_human_reply', 'snoozed_until', 'tags'] as const;
   type PatchableField = typeof allowed[number];
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -111,6 +113,22 @@ export async function PATCH(
     .eq('id', params.id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Activity log
+  if ('snoozed_until' in body) {
+    await logEvent(supabase, params.id, body.snoozed_until ? 'SNOOZED' : 'UNSNOOZED', {
+      actorUserId: appUser.id,
+      actorName: appUser.name,
+      metadata: { until: body.snoozed_until },
+    });
+  }
+  if ('tags' in body) {
+    await logEvent(supabase, params.id, 'TAG_ADDED', {
+      actorUserId: appUser.id,
+      actorName: appUser.name,
+      metadata: { tags: body.tags },
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

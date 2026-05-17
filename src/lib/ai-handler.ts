@@ -165,19 +165,26 @@ export async function handleAIResponse(
     return;
   }
 
-  // AI mode — send the reply
-  await supabase.from('messages').insert({
-    conversation_id: conversation.id,
-    direction: 'OUTBOUND',
-    sender: 'AI',
-    sender_user_id: null,
-    content: cleanText,
-    whatsapp_message_id: null,
-    created_at: new Date().toISOString(),
-  });
+  // AI mode — save first, then send, then stamp the WA id back
+  const { data: insertedMsg } = await supabase
+    .from('messages')
+    .insert({
+      conversation_id: conversation.id,
+      direction: 'OUTBOUND',
+      sender: 'AI',
+      sender_user_id: null,
+      content: cleanText,
+      whatsapp_message_id: null,
+      created_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single();
 
   try {
-    await sendWhatsAppMessage(conversation.phone_number, cleanText);
+    const waId = await sendWhatsAppMessage(conversation.phone_number, cleanText);
+    if (waId && insertedMsg?.id) {
+      await supabase.from('messages').update({ whatsapp_message_id: waId }).eq('id', insertedMsg.id);
+    }
   } catch (err) {
     console.error('WhatsApp delivery failed (reply saved to DB):', err);
   }

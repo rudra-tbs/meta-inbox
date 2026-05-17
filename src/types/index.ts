@@ -32,10 +32,33 @@ export interface Contact {
   guest_count: string | null;
   budget_range: string | null;
   service_type: string | null;
+  notes: string | null;
   status: ContactStatus;
   merged_into_contact_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ReplyTemplate {
+  id: string;
+  brand: Brand;
+  name: string;
+  content: string;
+  shortcut: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationEvent {
+  id: string;
+  conversation_id: string;
+  actor_user_id: string | null;
+  actor_name: string | null;
+  event_type: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metadata: Record<string, any>;
+  created_at: string;
 }
 
 export interface Conversation {
@@ -68,6 +91,9 @@ export interface Conversation {
   pushed_by_user_id: string | null;
   suggested_reply: string | null;
   suggested_reply_at: string | null;
+  snoozed_until: string | null;
+  tags: string[];
+  lead_score: number;
   first_contact_at: string;
   last_message_at: string;
   last_human_message_at: string | null;
@@ -78,6 +104,7 @@ export interface Conversation {
   assigned_user_name?: string | null;
   contact_phone?: string | null;
   contact_instagram_id?: string | null;
+  contact_notes?: string | null;
   sibling_conversations?: SiblingConversation[];
 }
 
@@ -95,9 +122,24 @@ export interface Message {
   sender_user_id: string | null;
   content: string;
   whatsapp_message_id: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
   created_at: string;
   sender_name?: string | null;
 }
+
+export interface SnoozePreset {
+  label: string;
+  hours: number;
+}
+
+export const SNOOZE_PRESETS: SnoozePreset[] = [
+  { label: '1 hour', hours: 1 },
+  { label: '3 hours', hours: 3 },
+  { label: 'Tomorrow morning', hours: 16 },
+  { label: '3 days', hours: 72 },
+  { label: '1 week', hours: 168 },
+];
 
 export interface QualificationData {
   brand: string;

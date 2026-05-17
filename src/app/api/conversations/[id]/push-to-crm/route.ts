@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
 import { queryCRM, insertCRM } from '@/lib/mysql-crm';
+import { logEvent } from '@/lib/activity';
 
 interface PushBody {
   client_name: string;
@@ -202,6 +203,12 @@ export async function POST(
   }
 
   console.log(`[Push CRM] conversation=${params.id} → deal_id=${crmDealId} person_id=${person_id}`);
+
+  await logEvent(supabase, params.id, 'PUSHED_TO_CRM', {
+    actorUserId: appUser.id,
+    actorName: appUser.name,
+    metadata: { deal_id: crmDealId, person_id, pipeline_id, stage_id },
+  });
 
   return NextResponse.json({ ok: true, crm_deal_id: crmDealId });
 }

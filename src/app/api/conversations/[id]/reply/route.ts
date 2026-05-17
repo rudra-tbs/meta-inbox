@@ -53,21 +53,31 @@ export async function POST(
     return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
   }
 
-  // Send via WhatsApp
-  await sendWhatsAppMessage(conversation.phone_number, message.trim());
-
   const now = new Date().toISOString();
 
-  // Insert message
-  await supabase.from('messages').insert({
-    conversation_id: params.id,
-    direction: 'OUTBOUND',
-    sender: 'HUMAN',
-    sender_user_id: appUser.id,
-    content: message.trim(),
-    whatsapp_message_id: null,
-    created_at: now,
-  });
+  // Insert message first so it shows in UI immediately, then send
+  const { data: insertedMsg } = await supabase
+    .from('messages')
+    .insert({
+      conversation_id: params.id,
+      direction: 'OUTBOUND',
+      sender: 'HUMAN',
+      sender_user_id: appUser.id,
+      content: message.trim(),
+      whatsapp_message_id: null,
+      created_at: now,
+    })
+    .select('id')
+    .single();
+
+  try {
+    const waId = await sendWhatsAppMessage(conversation.phone_number, message.trim());
+    if (waId && insertedMsg?.id) {
+      await supabase.from('messages').update({ whatsapp_message_id: waId }).eq('id', insertedMsg.id);
+    }
+  } catch (err) {
+    console.error('[Reply] WhatsApp send failed:', err);
+  }
 
   // Update conversation — manually_set_human=true prevents ai-mode from re-activating AI
   const { error: updateError } = await supabase

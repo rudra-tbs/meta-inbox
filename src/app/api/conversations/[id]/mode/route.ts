@@ -7,6 +7,7 @@ import { waitUntil } from '@vercel/functions';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
 import { handleAIResponse } from '@/lib/ai-handler';
+import { logEvent } from '@/lib/activity';
 import type { Conversation } from '@/types';
 
 export async function POST(
@@ -66,6 +67,12 @@ export async function POST(
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logEvent(supabase, params.id, 'MODE_CHANGED', {
+    actorUserId: appUser.id,
+    actorName: appUser.name,
+    metadata: { to: mode },
+  });
 
   // If switching to AI, check if the last message is unanswered inbound — if so, trigger AI immediately
   if (mode === 'AI') {
