@@ -2,15 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Design tokens — single source of truth for color across the app.
+   Format: 3 space-separated RGB channels so Tailwind can append /<alpha>.
+   ───────────────────────────────────────────────────────────────────────── */
 :root {
+  /* Surfaces */
+  --surface-canvas:     248 250 252;     /* slate-50  — sidebar/list bg */
+  --surface-elevated:   255 255 255;     /* white     — cards, panels   */
+  --surface-muted:      241 245 249;     /* slate-100 — AI bubble, inputs */
+  --surface-warm:       249 246 244;     /* cream     — chat area       */
+
+  /* Borders */
+  --border-default:     226 232 240;     /* slate-200 */
+  --border-strong:      203 213 225;     /* slate-300 */
+
+  /* Text */
+  --text-primary:       30 41 59;        /* slate-800 */
+  --text-secondary:     100 116 139;     /* slate-500 */
+  --text-muted:         148 163 184;     /* slate-400 */
+  --text-disabled:      203 213 225;     /* slate-300 */
+  --text-inverse:       255 255 255;
+
+  /* Semantic palette */
+  --color-brand:        225 29 72;       /* rose-600  — TBS primary */
+  --color-brand-hover:  190 18 60;       /* rose-700  */
+  --color-brand-soft:   255 241 242;     /* rose-50   */
+  --color-success:      5 150 105;       /* emerald-600 */
+  --color-success-soft: 236 253 245;     /* emerald-50 */
+  --color-warning:      245 158 11;      /* amber-500 */
+  --color-warning-soft: 255 251 235;     /* amber-50  */
+  --color-danger:       220 38 38;       /* red-600   */
+  --color-danger-soft:  254 242 242;     /* red-50    */
+  --color-info:         14 165 233;      /* sky-500   */
+  --color-info-soft:    240 249 255;     /* sky-50    */
+  --color-snooze:       99 102 241;      /* indigo-500 */
+  --color-snooze-soft:  238 242 255;     /* indigo-50 */
+
+  /* Channel disambiguation */
+  --channel-wa:         16 185 129;      /* emerald-500 */
+  --channel-ig:         236 72 153;      /* pink-500   */
+
+  /* Legacy aliases — kept temporarily so unmigrated code still works */
   --background: #ffffff;
   --foreground: #0f172a;
 }
 
+/* RD brand override — flip primary when html data-brand="RD" */
+[data-brand="RD"] {
+  --color-brand:        5 150 105;       /* emerald-600 */
+  --color-brand-hover:  4 120 87;        /* emerald-700 */
+  --color-brand-soft:   236 253 245;     /* emerald-50  */
+}
+
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: rgb(var(--text-primary));
+  background: rgb(var(--surface-elevated));
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
 }
 
 * {

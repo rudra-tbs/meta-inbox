@@ -8,6 +8,8 @@ import LeadInfoBar from './LeadInfoBar';
 import ModeToggle from './ModeToggle';
 import AssignDropdown from './AssignDropdown';
 import PushToCRMModal from './PushToCRMModal';
+import Button from './ui/Button';
+import Badge from './ui/Badge';
 
 interface ChatWindowProps {
   conversation: Conversation;
@@ -241,24 +243,22 @@ export default function ChatWindow({
           )}
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-sm font-semibold text-slate-800 truncate">{displayName}</h2>
+              <h2 className="text-sm font-semibold text-text-primary truncate">{displayName}</h2>
               {score >= 60 && (
-                <span title={`Lead score ${score}`} className="text-[10px] font-bold text-red-600">🔥 {score}</span>
+                <span title={`Lead score ${score}`} className="text-[10px] font-bold text-danger">🔥 {score}</span>
               )}
               {isNewLead ? (
-                <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
-                  New lead
-                </span>
+                <Badge tone="success">New lead</Badge>
               ) : daysSinceLast !== null ? (
-                <span className="text-[10px] text-slate-500">· Returning · {daysSinceLast}d ago</span>
+                <span className="text-[10px] text-text-secondary">· Returning · {daysSinceLast}d ago</span>
               ) : null}
               {isSnoozed && (
-                <span className="text-[10px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-full">
+                <Badge tone="snooze">
                   💤 Snoozed until {new Date(conversation.snoozed_until!).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
-                </span>
+                </Badge>
               )}
             </div>
-            <p className="text-xs text-slate-500 truncate">
+            <p className="text-xs text-text-secondary truncate">
               {conversation.contact_phone && <span className="mr-3">📱 +{conversation.contact_phone}</span>}
               {!conversation.contact_phone && conversation.phone_number && conversation.channel === 'WA' && (
                 <span className="mr-3">📱 +{conversation.phone_number}</span>
@@ -268,9 +268,9 @@ export default function ChatWindow({
             {siblings.length > 0 && (
               <div className="flex items-center gap-1">
                 {siblings.map((s) => (
-                  <span key={s.id} className="text-[10px] font-medium text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                  <Badge key={s.id} tone="neutral">
                     Also on {s.channel === 'WA' ? 'WhatsApp' : 'Instagram'}
-                  </span>
+                  </Badge>
                 ))}
               </div>
             )}
@@ -281,32 +281,29 @@ export default function ChatWindow({
           <ModeToggle conversation={conversation} onToggle={onModeChange} />
           <AssignDropdown conversation={conversation} onAssign={onAssign} />
           <div className="relative">
-            <button
+            <Button
+              variant="icon"
               onClick={() => setShowSnoozeMenu((v) => !v)}
               title={isSnoozed ? 'Snoozed — click to unsnooze' : 'Snooze conversation'}
-              className={`text-xs px-2 py-1.5 rounded-lg border transition-colors ${
-                isSnoozed
-                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
-                  : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'
-              }`}
+              className={isSnoozed ? 'bg-snooze-soft text-snooze border-snooze/20' : ''}
             >
               💤
-            </button>
+            </Button>
             {showSnoozeMenu && (
-              <div className="absolute top-full right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-10 py-1 min-w-[160px]">
+              <div className="absolute top-full right-0 mt-1 bg-elevated border border-border-default rounded-lg shadow-lg z-10 py-1 min-w-[160px]">
                 {SNOOZE_PRESETS.map((p) => (
                   <button
                     key={p.label}
                     onClick={() => snooze(p.hours)}
-                    className="block w-full text-left text-xs px-3 py-1.5 hover:bg-slate-50"
+                    className="block w-full text-left text-xs px-3 py-1.5 hover:bg-canvas"
                   >
                     {p.label}
                   </button>
                 ))}
                 {isSnoozed && (
                   <>
-                    <hr className="my-1 border-slate-100" />
-                    <button onClick={() => snooze(null)} className="block w-full text-left text-xs px-3 py-1.5 hover:bg-slate-50 text-red-600">
+                    <hr className="my-1 border-border-default" />
+                    <button onClick={() => snooze(null)} className="block w-full text-left text-xs px-3 py-1.5 hover:bg-canvas text-danger">
                       Unsnooze
                     </button>
                   </>
@@ -314,33 +311,27 @@ export default function ChatWindow({
               </div>
             )}
           </div>
-          <button
+          <Button
+            variant="icon"
             onClick={() => setShowHistory((v) => !v)}
             title="Activity log"
-            className={`text-xs px-2 py-1.5 rounded-lg border transition-colors ${
-              showHistory ? 'bg-slate-100 border-slate-300' : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'
-            }`}
+            className={showHistory ? 'bg-canvas border-border-strong' : ''}
           >
             🕐
-          </button>
+          </Button>
           {conversation.pushed_to_crm ? (
             <div className="flex flex-col items-end gap-1">
-              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full whitespace-nowrap">
+              <Badge tone="success" size="sm">
                 ✓ Deal #{conversation.crm_deal_id}
-              </span>
+              </Badge>
               {conversation.crm_stage_name && (
-                <span className="text-[10px] font-medium text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full whitespace-nowrap">
-                  {conversation.crm_stage_name}
-                </span>
+                <Badge tone="neutral">{conversation.crm_stage_name}</Badge>
               )}
             </div>
           ) : (
-            <button
-              onClick={() => setShowCRMModal(true)}
-              className="text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg shadow-sm transition-colors whitespace-nowrap"
-            >
+            <Button variant="success" onClick={() => setShowCRMModal(true)}>
               Push to CRM →
-            </button>
+            </Button>
           )}
         </div>
       </div>
