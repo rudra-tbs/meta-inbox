@@ -45,14 +45,14 @@ function Nav() {
           <div className="w-7 h-7 bg-brand rounded-lg flex items-center justify-center">
             <span className="text-text-inverse font-bold text-sm">A</span>
           </div>
-          <span className="text-sm font-semibold tracking-tight">Acceltancy Inbox</span>
+          <span className="text-sm font-semibold tracking-tight">Inbox</span>
         </Link>
         <div className="flex items-center gap-2 md:gap-4">
           <Link
             href="#features"
             className="hidden md:inline text-sm text-text-secondary hover:text-text-primary transition-colors"
           >
-            Features
+            What&apos;s inside
           </Link>
           <Link
             href="#how"
@@ -70,7 +70,7 @@ function Nav() {
             href="/signup"
             className="text-sm font-medium bg-brand text-text-inverse px-3.5 py-1.5 rounded-lg hover:bg-brand-hover transition-colors shadow-sm"
           >
-            Get started
+            Create account
           </Link>
         </div>
       </div>
@@ -87,22 +87,22 @@ function Hero() {
           <div>
             <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-brand-soft text-brand text-[11px] font-medium mb-5">
               <span className="w-1.5 h-1.5 rounded-full bg-brand" />
-              Built for India&apos;s wedding industry
+              Internal tool · Acceltancy team
             </div>
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1]">
-              Every wedding lead qualified the moment they message.
+              The team inbox for every lead, every brand.
             </h1>
             <p className="mt-5 text-base md:text-lg text-text-secondary leading-relaxed max-w-xl">
-              Acceltancy Inbox routes inbound WhatsApp and Instagram messages to an AI that asks the right
-              questions — budget, dates, city, guest count, services — before any human is involved.
-              Your planners step in only when a lead is ready to book.
+              This is where our wedding teams handle inbound WhatsApp and Instagram leads. An AI agent qualifies
+              every message — budget, dates, city, guest count, services — and hands them off to you the moment
+              a lead is ready to talk numbers.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <Link
                 href="/signup"
                 className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold bg-brand text-text-inverse hover:bg-brand-hover transition-colors shadow-sm"
               >
-                Get started
+                Create your account
                 <Arrow className="w-3.5 h-3.5" />
               </Link>
               <Link
@@ -113,7 +113,7 @@ function Hero() {
               </Link>
             </div>
             <p className="mt-5 text-[12px] text-text-muted">
-              Live in production at The Bride Side. Self-serve setup in under 5 minutes.
+              For team members at The Bride Side, Revaah Decor, and the rest of Acceltancy&apos;s wedding brands.
             </p>
           </div>
 
@@ -154,7 +154,7 @@ function InboxMockup() {
               <div className="h-6 rounded bg-muted" />
             </div>
             <MockConvRow name="Priya Sharma" preview="Hi! We are looking at Goa for…" time="2m" unread={3} active />
-            <MockConvRow name="Aryan Patel" preview="Sounds great — what's your bu…" time="14m" mode="HUMAN" />
+            <MockConvRow name="Aryan Patel" preview="Sounds great — what is your bu…" time="14m" mode="HUMAN" />
             <MockConvRow name="Mehak Khanna" preview="Approx 350 guests, December 2…" time="1h" hot />
             <MockConvRow name="Rohan Sethi" preview="Will check with my fiancé and…" time="3h" />
             <MockConvRow name="Vidya Iyer" preview="₹50L is our hard upper limit." time="1d" />
@@ -252,10 +252,10 @@ function Stats() {
   return (
     <section className="border-y border-border-default bg-canvas">
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-10 md:py-14 grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-10">
-        <Stat value="5" unit="questions" label="Average qualification depth before any planner is involved" />
-        <Stat value="<60s" label="From first inbound to AI's first reply" />
-        <Stat value="3+" unit="brands" label="Run on one inbox with brand-scoped agent access" />
-        <Stat value="100%" label="Audit-logged for accountability and compliance" />
+        <Stat value="5" unit="data points" label="The AI collects before any planner is involved" />
+        <Stat value="<60s" label="From inbound message to the AI's first reply" />
+        <Stat value="3+" unit="brands" label="Run from one inbox with per-brand access" />
+        <Stat value="100%" label="Audit-logged — every mode toggle, assignment, and CRM push" />
       </div>
     </section>
   );
@@ -268,7 +268,7 @@ function Stat({ value, unit, label }: { value: string; unit?: string; label: str
         {value}
         {unit && <span className="ml-1 text-base md:text-lg text-text-secondary font-medium">{unit}</span>}
       </div>
-      <p className="mt-1.5 text-[12px] md:text-sm text-text-secondary leading-snug max-w-[200px]">{label}</p>
+      <p className="mt-1.5 text-[12px] md:text-sm text-text-secondary leading-snug max-w-[220px]">{label}</p>
     </div>
   );
 }
@@ -281,74 +281,74 @@ function Features() {
           What&apos;s inside
         </div>
         <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
-          An inbox that knows wedding planning.
+          What the Inbox does for the team.
         </h2>
         <p className="mt-4 text-base text-text-secondary leading-relaxed">
-          Every feature is built around how Indian wedding planners actually work — fast WhatsApp replies,
-          messy multi-event timelines, and the moment a lead is ready to talk numbers.
+          Every feature here exists because someone on our team needed it. Read through this once before your
+          first shift — you&apos;ll know exactly what the system does for you and what&apos;s still on you.
         </p>
       </div>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
         <Feature
           icon={<AiIcon />}
-          title="AI lead qualification"
-          body="A trained AI agent collects city, dates, guest count, budget, and service needs — in Hindi, English, or Hinglish — before any planner is pinged."
+          title="AI does the first round"
+          body="Every inbound message goes to a trained AI agent that collects city, dates, guest count, budget, and service needs — in Hindi, English, or Hinglish. You don't see the conversation until it&apos;s worth your time."
         />
         <Feature
           icon={<HandoffIcon />}
-          title="Smart handoff to humans"
-          body="The AI hands off the moment a lead asks for pricing, mentions a deal, or wants to book. No babysitting required."
+          title="It hands off when it matters"
+          body="The AI flags you the moment a lead asks for pricing, mentions a competitor, or is ready to book. The conversation lands in your queue with full context."
         />
         <Feature
           icon={<SuggestIcon />}
-          title="Suggested replies in human mode"
-          body="Even after handoff, the AI drafts the next message based on conversation context. Your team sends in two taps."
+          title="Suggested replies after handoff"
+          body="Even when you take over, the AI keeps drafting the next message based on conversation context. Read it, tweak it, send it."
         />
         <Feature
           icon={<BrandIcon />}
-          title="Multi-brand from day one"
-          body="Run The Bride Side, Revaah Decor, and every future brand from one inbox. Agents only see brands they're assigned to."
+          title="Multi-brand from one inbox"
+          body="Whether you work on The Bride Side, Revaah Decor, or both, you only see the brands you're assigned to. Admins can grant or revoke access in Settings."
         />
         <Feature
           icon={<ChannelIcon />}
-          title="WhatsApp + Instagram"
-          body="Connect WhatsApp Business and Instagram DM per brand. Inbound routes automatically based on which number received it."
+          title="WhatsApp and Instagram"
+          body="Each brand connects its own WhatsApp Business number and Instagram account. Inbound messages route to the right brand based on which number they came in on."
         />
         <Feature
           icon={<ScoreIcon />}
-          title="Lead scoring"
-          body="High-budget, near-term, multi-service leads bubble to the top automatically. Stop missing the bookings that matter."
+          title="Lead scoring sorts your queue"
+          body="High-budget, near-term, multi-service leads bubble to the top automatically. The 🔥 marker tells you which conversation deserves attention first."
         />
         <Feature
           icon={<CrmIcon />}
-          title="One-click push to CRM"
-          body="Send a qualified deal to your existing CRM with budget, dates, guest count, and conversation history pre-filled."
+          title="Push to CRM in one click"
+          body="When a lead is qualified, push the deal to our CRM with budget, dates, guest count, and conversation history pre-filled. No double entry."
         />
         <Feature
           icon={<TemplateIcon />}
           title="Reply templates"
-          body="Save the 30 messages your planners type every week. Insert with a shortcut and tweak per lead."
+          body="Save the messages you type 30 times a week and recall them with a shortcut. Each template can be tweaked before sending."
         />
         <Feature
           icon={<NotifyIcon />}
           title="Browser notifications"
-          body="Get pinged the instant a high-priority lead replies — even when the tab is in the background."
+          body="When a hot lead replies and your tab is in the background, the browser pings you. The conversation also shows an unread badge in the sidebar."
         />
         <Feature
           icon={<ReceiptIcon />}
-          title="Read receipts"
-          body="See exactly when a lead read your message. Stop guessing if they ghosted or just got busy."
+          title="Read and delivery receipts"
+          body="See exactly when WhatsApp delivered your message and when the lead read it. No more guessing whether they ghosted or just got busy."
         />
         <Feature
           icon={<SnoozeIcon />}
-          title="Snooze + tags"
-          body="Send a thread back to tomorrow morning. Slice the inbox by venue type, budget tier, or campaign source."
+          title="Snooze and tags"
+          body="Send a thread back to your queue tomorrow morning. Tag conversations by venue type, budget tier, or campaign source to slice the inbox however you work."
         />
         <Feature
           icon={<AuditIcon />}
           title="Full activity log"
-          body="Every action — mode toggle, assignment, push to CRM, snooze — audit-logged so nothing slips through the cracks."
+          body="Every mode toggle, assignment, snooze, and CRM push is recorded against the conversation. If something looks off later, the timeline tells you who did what and when."
         />
       </div>
     </section>
@@ -373,28 +373,28 @@ function HowItWorks() {
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-16 md:py-24">
         <div className="text-center max-w-2xl mx-auto mb-12 md:mb-16">
           <div className="inline-block text-xs font-semibold uppercase tracking-wider text-brand mb-3">
-            How it works
+            How a lead flows through
           </div>
           <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
-            Three steps from inbound message to closed booking.
+            From first WhatsApp ping to a closed booking.
           </h2>
         </div>
 
         <div className="grid md:grid-cols-3 gap-6">
           <Step
             n={1}
-            title="Lead messages your WhatsApp"
-            body="An ad click, an Instagram story tap, or a referral — the lead sends a message to your business number. The webhook routes it to the right brand automatically."
+            title="Lead messages your brand"
+            body="An ad click, a referral, or an Instagram story tap — the lead sends a message to your brand's WhatsApp number. The webhook routes it to the right brand automatically."
           />
           <Step
             n={2}
             title="AI qualifies in their language"
-            body="The AI replies within seconds, asking about city, dates, guest count, and budget. It speaks Hindi, English, or Hinglish — whichever the lead used."
+            body="Within seconds, the AI agent replies — asking about city, dates, guest count, and budget. It speaks Hindi, English, or Hinglish, whichever the lead used."
           />
           <Step
             n={3}
-            title="Your planner takes over to close"
-            body="The moment the lead is ready to discuss pricing or book, the inbox flags it. Your planner sees the full conversation and a suggested next reply."
+            title="You take over to close"
+            body="The instant the lead is ready to discuss pricing or book, the conversation lands in your queue with the qualification data already collected. You step in to close."
           />
         </div>
       </div>
@@ -421,18 +421,18 @@ function ClosingCTA() {
         <div className="absolute inset-0 bg-gradient-to-br from-brand/30 via-transparent to-transparent pointer-events-none" />
         <div className="relative">
           <h2 className="text-3xl md:text-4xl font-bold tracking-tight max-w-2xl mx-auto leading-tight">
-            Spend your time closing weddings, not qualifying leads.
+            New to the team? Get set up in two minutes.
           </h2>
           <p className="mt-4 text-base text-white/70 max-w-xl mx-auto leading-relaxed">
-            Set up your inbox in under five minutes. No credit card. No sales call. Just sign up and connect
-            your WhatsApp number.
+            Create an account with your work email, pick the brands you handle, and the rest of the inbox
+            unlocks automatically. If you&apos;ve been onboarded before, just sign in.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/signup"
               className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold bg-brand text-text-inverse hover:bg-brand-hover transition-colors shadow-lg"
             >
-              Get started
+              Create your account
               <Arrow className="w-3.5 h-3.5" />
             </Link>
             <Link
@@ -457,7 +457,7 @@ function Footer() {
             <span className="text-text-inverse font-bold text-[11px]">A</span>
           </div>
           <span className="text-xs text-text-secondary">
-            © 2026 Acceltancy. Built for the Indian wedding industry.
+            Inbox · Internal tool · Acceltancy © 2026
           </span>
         </div>
         <div className="flex items-center gap-5">
@@ -465,7 +465,7 @@ function Footer() {
             Sign in
           </Link>
           <Link href="/signup" className="text-xs text-text-secondary hover:text-text-primary transition-colors">
-            Get started
+            Create account
           </Link>
         </div>
       </div>

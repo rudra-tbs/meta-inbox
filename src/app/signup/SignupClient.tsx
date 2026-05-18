@@ -67,7 +67,7 @@ export default function SignupClient() {
           <div className="w-8 h-8 bg-brand rounded-full flex items-center justify-center">
             <span className="text-text-inverse font-bold text-sm">A</span>
           </div>
-          <span className="text-sm font-semibold text-text-primary">Acceltancy Inbox</span>
+          <span className="text-sm font-semibold text-text-primary">Inbox</span>
         </div>
       </header>
 
