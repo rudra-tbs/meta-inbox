@@ -19,6 +19,7 @@ export default function SignupClient() {
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [picked, setPicked] = useState<PickedChannel[]>([]);
   const [loadingState, setLoadingState] = useState(false);
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
 
   async function loadOnboardingState() {
     setLoadingState(true);
@@ -28,6 +29,7 @@ export default function SignupClient() {
       const data = await res.json();
       setBrands(data.brands ?? []);
       setConfigured(data.configured ?? []);
+      setPipelineError(data.pipelineError ?? null);
     } finally {
       setLoadingState(false);
     }
@@ -87,12 +89,14 @@ export default function SignupClient() {
 
           {step === 1 && (
             loadingState && brands.length === 0 ? (
-              <LoadingBlock label="Fetching brands…" />
+              <LoadingBlock label="Fetching brands from CRM…" />
             ) : (
               <BrandsStep
                 brands={brands}
                 selected={selectedBrands}
                 onChange={setSelectedBrands}
+                pipelineError={pipelineError}
+                onRetry={loadOnboardingState}
                 onBack={() => setStep(0)}
                 onNext={() => setStep(2)}
               />

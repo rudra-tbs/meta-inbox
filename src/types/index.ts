@@ -1,4 +1,7 @@
-export type Brand = 'TBS' | 'RD';
+// Brand identifier — corresponds to a CRM pipeline id (stored as text).
+// Historically this was a 'TBS' | 'RD' enum; the constraint has been
+// dropped and we now accept any pipeline id string.
+export type Brand = string;
 export type Channel = 'WA' | 'IG';
 export type ChannelView = Channel | 'ALL';
 export type ConversationMode = 'AI' | 'HUMAN';

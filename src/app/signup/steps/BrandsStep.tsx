@@ -12,11 +12,13 @@ interface BrandsStepProps {
   brands: BrandOption[];
   selected: string[];
   onChange: (next: string[]) => void;
+  pipelineError?: string | null;
+  onRetry?: () => void;
   onBack: () => void;
   onNext: () => void;
 }
 
-export default function BrandsStep({ brands, selected, onChange, onBack, onNext }: BrandsStepProps) {
+export default function BrandsStep({ brands, selected, onChange, pipelineError, onRetry, onBack, onNext }: BrandsStepProps) {
   function toggle(id: string) {
     onChange(selected.includes(id) ? selected.filter((b) => b !== id) : [...selected, id]);
   }
@@ -29,6 +31,23 @@ export default function BrandsStep({ brands, selected, onChange, onBack, onNext 
           You&apos;ll only see conversations for the brands you pick. Pick more than one if applicable.
         </p>
       </div>
+
+      {pipelineError && (
+        <div className="bg-danger-soft border border-danger/20 text-danger text-sm px-3 py-2 rounded-md flex items-start justify-between gap-3">
+          <span>Couldn&apos;t load brands from the CRM: {pipelineError}</span>
+          {onRetry && (
+            <button onClick={onRetry} className="underline text-danger font-medium flex-shrink-0">
+              Retry
+            </button>
+          )}
+        </div>
+      )}
+
+      {!pipelineError && brands.length === 0 && (
+        <div className="bg-warning-soft border border-warning/20 text-warning text-sm px-3 py-2 rounded-md">
+          No active pipelines found in the CRM. Ask your admin to create one before continuing.
+        </div>
+      )}
 
       <div className="space-y-2">
         {brands.map((b) => {

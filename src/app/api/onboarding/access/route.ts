@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
   const access = (body?.access ?? []) as Array<{ brand: string; channel: string }>;
 
   const valid = access.filter(
-    (a) => ['TBS', 'RD'].includes(a.brand) && ['WA', 'IG'].includes(a.channel)
+    (a) => typeof a.brand === 'string' && a.brand.length > 0 && ['WA', 'IG'].includes(a.channel)
   );
   if (valid.length === 0) {
     return NextResponse.json({ error: 'Pick at least one brand and channel' }, { status: 400 });

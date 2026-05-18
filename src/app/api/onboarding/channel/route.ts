@@ -6,7 +6,7 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
 import { fetchWhatsAppNumberInfo } from '@/lib/whatsapp';
-import type { Brand, Channel } from '@/types';
+import type { Channel } from '@/types';
 
 export async function POST(request: NextRequest) {
   const cookieStore = cookies();
@@ -31,13 +31,13 @@ export async function POST(request: NextRequest) {
   if (!appUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json();
-  const brand = body?.brand as Brand;
+  const brand = String(body?.brand ?? '').trim();
   const channel = body?.channel as Channel;
   const externalAccountId = String(body?.external_account_id ?? '').trim();
   const accessToken = String(body?.access_token ?? '').trim();
 
-  if (!['TBS', 'RD'].includes(brand)) {
-    return NextResponse.json({ error: 'Invalid brand' }, { status: 400 });
+  if (!brand) {
+    return NextResponse.json({ error: 'Brand is required' }, { status: 400 });
   }
   if (!['WA', 'IG'].includes(channel)) {
     return NextResponse.json({ error: 'Invalid channel' }, { status: 400 });
