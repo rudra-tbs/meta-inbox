@@ -5,14 +5,26 @@ import Button from '@/components/ui/Button';
 
 interface AccountStepProps {
   initial: { name: string; email: string };
-  onSubmitted: (user: { name: string; email: string }) => void;
+  onAwaitingVerification: (email: string) => void;
 }
+
+const ALLOWED_DOMAINS = ['acceltancy.in', 'thebrideside.in'];
 
 function validateEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-export default function AccountStep({ initial, onSubmitted }: AccountStepProps) {
+function emailDomain(email: string): string {
+  const at = email.lastIndexOf('@');
+  return at >= 0 ? email.slice(at + 1).toLowerCase() : '';
+}
+
+function isAllowedDomain(email: string): boolean {
+  const d = emailDomain(email);
+  return ALLOWED_DOMAINS.includes(d);
+}
+
+export default function AccountStep({ initial, onAwaitingVerification }: AccountStepProps) {
   const [name, setName] = useState(initial.name);
   const [email, setEmail] = useState(initial.email);
   const [password, setPassword] = useState('');
@@ -23,7 +35,13 @@ export default function AccountStep({ initial, onSubmitted }: AccountStepProps) 
 
   const errors: Record<string, string | null> = {
     name: !name.trim() ? 'Name is required' : null,
-    email: !email ? 'Email is required' : !validateEmail(email) ? 'Enter a valid email address' : null,
+    email: !email
+      ? 'Email is required'
+      : !validateEmail(email)
+      ? 'Enter a valid email address'
+      : !isAllowedDomain(email)
+      ? `Only ${ALLOWED_DOMAINS.map((d) => '@' + d).join(' or ')} emails can sign up`
+      : null,
     password: !password ? 'Password is required' : password.length < 8 ? 'Use at least 8 characters' : null,
     confirm: !confirm ? 'Please re-enter your password' : confirm !== password ? 'Passwords do not match' : null,
   };
@@ -46,7 +64,7 @@ export default function AccountStep({ initial, onSubmitted }: AccountStepProps) 
         setServerError(data?.error ?? 'Could not create account');
         return;
       }
-      onSubmitted({ name: data.name, email: data.email });
+      onAwaitingVerification(data?.email ?? email.trim().toLowerCase());
     } catch {
       setServerError('Network error. Please try again.');
     } finally {
@@ -71,16 +89,23 @@ export default function AccountStep({ initial, onSubmitted }: AccountStepProps) 
         autoComplete="name"
       />
 
-      <Field
-        label="Work email"
-        type="email"
-        placeholder="you@acceltancy.in"
-        value={email}
-        onChange={setEmail}
-        onBlur={() => setTouched((t) => ({ ...t, email: true }))}
-        error={touched.email ? errors.email : null}
-        autoComplete="email"
-      />
+      <div>
+        <Field
+          label="Work email"
+          type="email"
+          placeholder="you@acceltancy.in"
+          value={email}
+          onChange={setEmail}
+          onBlur={() => setTouched((t) => ({ ...t, email: true }))}
+          error={touched.email ? errors.email : null}
+          autoComplete="email"
+        />
+        {!touched.email && (
+          <p className="mt-1 text-[11px] text-text-muted">
+            Restricted to {ALLOWED_DOMAINS.map((d) => '@' + d).join(' and ')} addresses.
+          </p>
+        )}
+      </div>
 
       <Field
         label="Password"

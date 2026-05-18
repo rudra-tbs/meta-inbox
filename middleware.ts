@@ -9,6 +9,7 @@ export async function middleware(request: NextRequest) {
     pathname === '/' ||
     pathname === '/login' ||
     pathname === '/signup' ||
+    pathname === '/auth/callback' ||
     pathname === '/api/auth/signup' ||
     pathname === '/api/auth/signout' ||
     pathname.startsWith('/api/webhook')
