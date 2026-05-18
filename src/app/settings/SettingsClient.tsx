@@ -8,8 +8,9 @@ import ProfileTab from './tabs/ProfileTab';
 import ChannelsTab from './tabs/ChannelsTab';
 import UsersTab from './tabs/UsersTab';
 import AdminChannelsTab from './tabs/AdminChannelsTab';
+import BrandContextsTab from './tabs/BrandContextsTab';
 
-type TabId = 'profile' | 'channels' | 'users' | 'admin-channels';
+type TabId = 'profile' | 'channels' | 'users' | 'admin-channels' | 'brand-contexts';
 
 interface SettingsClientProps {
   currentUser: AppUser;
@@ -49,6 +50,7 @@ export default function SettingsClient({ currentUser }: SettingsClientProps) {
       ? ([
           { id: 'users', label: 'Users' },
           { id: 'admin-channels', label: 'All channels' },
+          { id: 'brand-contexts', label: 'Brand contexts' },
         ] as Array<{ id: TabId; label: string }>)
       : []),
   ];
@@ -97,6 +99,7 @@ export default function SettingsClient({ currentUser }: SettingsClientProps) {
             {active === 'channels' && <ChannelsTab me={me} onChanged={loadMe} />}
             {active === 'users' && isAdmin && <UsersTab currentUserId={me.id} />}
             {active === 'admin-channels' && isAdmin && <AdminChannelsTab />}
+            {active === 'brand-contexts' && isAdmin && <BrandContextsTab />}
           </>
         )}
 
