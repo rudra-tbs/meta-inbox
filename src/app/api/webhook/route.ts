@@ -6,6 +6,7 @@ import { createServerClient } from '@/lib/supabase';
 import { resolveConversation } from '@/lib/ai-mode';
 import { handleAIResponse } from '@/lib/ai-handler';
 import { verifyWebhookSignature } from '@/lib/webhook-verify';
+import { getBrandFromExternalId } from '@/lib/brand-channels';
 
 // GET: WhatsApp webhook verification
 export async function GET(request: NextRequest) {
@@ -73,8 +74,23 @@ export async function POST(request: NextRequest) {
     const msgId = msg.id as string;
     const textBody = msg.text?.body as string;
     const contactName = value?.contacts?.[0]?.profile?.name ?? null;
+    const recipientPhoneNumberId = value?.metadata?.phone_number_id as string | undefined;
 
     const supabase = createServerClient();
+
+    // Map the receiving phone_number_id → brand. Without this we don't know
+    // which brand's inbox this message belongs to.
+    if (!recipientPhoneNumberId) {
+      console.warn('[Webhook] payload missing metadata.phone_number_id — cannot route');
+      return NextResponse.json({ ok: true });
+    }
+    const route = await getBrandFromExternalId(supabase, recipientPhoneNumberId, 'WA');
+    if (!route) {
+      console.warn(`[Webhook] no brand configured for phone_number_id=${recipientPhoneNumberId}`);
+      return NextResponse.json({ ok: true });
+    }
+    const brand = route.brand;
+
     const { data: existing } = await supabase
       .from('messages')
       .select('id')
@@ -88,7 +104,7 @@ export async function POST(request: NextRequest) {
     const { conversation, mode } = await resolveConversation(
       supabase,
       fromPhone,
-      'TBS',
+      brand,
       'WA',
       contactName
     );

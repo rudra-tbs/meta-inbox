@@ -5,7 +5,13 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes
-  if (pathname === '/login' || pathname.startsWith('/api/webhook')) {
+  if (
+    pathname === '/login' ||
+    pathname === '/signup' ||
+    pathname === '/api/auth/signup' ||
+    pathname === '/api/auth/signout' ||
+    pathname.startsWith('/api/webhook')
+  ) {
     return NextResponse.next();
   }
 

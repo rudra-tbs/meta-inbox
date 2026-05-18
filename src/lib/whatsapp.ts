@@ -1,9 +1,18 @@
-export async function sendWhatsAppMessage(to: string, text: string): Promise<string | null> {
-  const url = `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+import { createServerClient } from '@/lib/supabase';
+import { getBrandChannel } from '@/lib/brand-channels';
+import type { Brand } from '@/types';
+
+interface SendOptions {
+  phoneNumberId: string;
+  accessToken: string;
+}
+
+async function postMessage(to: string, text: string, opts: SendOptions): Promise<string | null> {
+  const url = `https://graph.facebook.com/v19.0/${opts.phoneNumberId}/messages`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+      'Authorization': `Bearer ${opts.accessToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -27,4 +36,43 @@ export async function sendWhatsAppMessage(to: string, text: string): Promise<str
   }
   const data = await res.json();
   return data?.messages?.[0]?.id ?? null;
+}
+
+// Brand-aware send. Looks up the brand's phone_number_id + access_token
+// from brand_channels (or env-var fallback) and posts the message.
+export async function sendWhatsAppMessage(
+  brand: Brand,
+  to: string,
+  text: string
+): Promise<string | null> {
+  const supabase = createServerClient();
+  const creds = await getBrandChannel(supabase, brand, 'WA');
+  if (!creds) {
+    throw new Error(`WhatsApp not configured for brand ${brand}`);
+  }
+  return postMessage(to, text, {
+    phoneNumberId: creds.external_account_id,
+    accessToken: creds.access_token,
+  });
+}
+
+// Used by the signup flow to validate a freshly-pasted credential pair before
+// we store it. Returns the display name (phone number) from Meta on success.
+export async function fetchWhatsAppNumberInfo(
+  phoneNumberId: string,
+  accessToken: string
+): Promise<{ display_phone_number: string; verified_name: string | null }> {
+  const url = `https://graph.facebook.com/v19.0/${phoneNumberId}?fields=display_phone_number,verified_name`;
+  const res = await fetch(url, {
+    headers: { 'Authorization': `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message ?? `Meta API returned ${res.status}`);
+  }
+  const data = await res.json();
+  return {
+    display_phone_number: data.display_phone_number ?? phoneNumberId,
+    verified_name: data.verified_name ?? null,
+  };
 }

@@ -18,7 +18,7 @@ interface InboxClientProps {
 }
 
 export default function InboxClient({ currentUser }: InboxClientProps) {
-  const [activeBrand] = useState<'TBS'>('TBS');
+  const [activeBrand] = useState<string>('TBS');
   const [activeChannel, setActiveChannel] = useState<ChannelView>('WA');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -336,7 +336,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-elevated">
-      <BrandRail activeBrand={activeBrand} />
+      <BrandRail activeBrand={activeBrand} currentUser={currentUser} />
 
       <div
         className={`flex flex-col border-r border-border-default bg-elevated
@@ -413,16 +413,23 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
             showChannelTags={isAllChannels}
           />
         ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center text-text-muted">
-              <div className="text-5xl mb-4">💬</div>
-              <p className="text-sm">Select a conversation to start</p>
-              <p className="text-xs mt-3 text-text-muted">
-                <kbd>⌘K</kbd> command palette ·{' '}
-                <kbd>J</kbd>/<kbd>K</kbd> nav ·{' '}
-                <kbd>T</kbd> toggle ·{' '}
-                <kbd>R</kbd> reply
+          <div className="flex-1 flex items-center justify-center px-6">
+            <div className="text-center max-w-sm">
+              <div className="w-14 h-14 rounded-2xl bg-elevated border border-border-default shadow-sm flex items-center justify-center mx-auto mb-4" aria-hidden>
+                <svg className="w-7 h-7 text-text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-text-primary">Select a conversation</p>
+              <p className="text-[12px] text-text-secondary mt-1 leading-snug">
+                Pick one from the sidebar to read history and reply.
               </p>
+              <div className="mt-5 inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-text-muted">
+                <span><kbd className="px-1 py-0.5 bg-muted rounded text-text-secondary">⌘K</kbd> palette</span>
+                <span><kbd className="px-1 py-0.5 bg-muted rounded text-text-secondary">J</kbd>/<kbd className="px-1 py-0.5 bg-muted rounded text-text-secondary">K</kbd> nav</span>
+                <span><kbd className="px-1 py-0.5 bg-muted rounded text-text-secondary">T</kbd> toggle</span>
+                <span><kbd className="px-1 py-0.5 bg-muted rounded text-text-secondary">R</kbd> reply</span>
+              </div>
             </div>
           </div>
         )}

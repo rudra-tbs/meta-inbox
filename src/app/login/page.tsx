@@ -90,6 +90,13 @@ export default function LoginPage() {
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+
+        <p className="text-center text-xs text-text-secondary mt-6">
+          New to Acceltancy?{' '}
+          <a href="/signup" className="text-brand font-medium hover:underline">
+            Create an account
+          </a>
+        </p>
       </div>
     </div>
   );

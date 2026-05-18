@@ -181,7 +181,7 @@ export async function handleAIResponse(
     .single();
 
   try {
-    const waId = await sendWhatsAppMessage(conversation.phone_number, cleanText);
+    const waId = await sendWhatsAppMessage(conversation.brand, conversation.phone_number, cleanText);
     if (waId && insertedMsg?.id) {
       await supabase.from('messages').update({ whatsapp_message_id: waId }).eq('id', insertedMsg.id);
     }

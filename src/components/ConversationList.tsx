@@ -62,13 +62,19 @@ export default function ConversationList({
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-20 text-xs text-text-muted">
-            Loading...
+          <div className="px-4 py-6 space-y-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex gap-3 animate-pulse">
+                <div className="w-9 h-9 rounded-full bg-muted flex-shrink-0" />
+                <div className="flex-1 space-y-1.5 pt-1">
+                  <div className="h-3 bg-muted rounded w-2/3" />
+                  <div className="h-2.5 bg-muted rounded w-full" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : conversations.length === 0 ? (
-          <div className="flex items-center justify-center h-20 text-xs text-text-muted">
-            No conversations found
-          </div>
+          <EmptyConversations search={search} statusFilter={statusFilter} />
         ) : (
           conversations.map((conv) => (
             <ConversationItem
@@ -83,6 +89,40 @@ export default function ConversationList({
 
       {/* Stats bar */}
       <StatsBar conversations={conversations} />
+    </div>
+  );
+}
+
+function EmptyConversations({ search, statusFilter }: { search: string; statusFilter: StatusFilter }) {
+  const filtered = !!search || statusFilter !== 'all';
+  return (
+    <div className="px-6 py-10 flex flex-col items-center text-center">
+      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3" aria-hidden>
+        <svg className="w-6 h-6 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+        </svg>
+      </div>
+      {filtered ? (
+        <>
+          <p className="text-sm font-medium text-text-primary">No conversations match</p>
+          <p className="text-[12px] text-text-secondary mt-1 leading-snug">
+            Clear the search or filter to see all conversations.
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-medium text-text-primary">Waiting for first message</p>
+          <p className="text-[12px] text-text-secondary mt-1 leading-snug max-w-[200px]">
+            When a lead messages your WhatsApp number, the conversation lands here.
+          </p>
+          <a
+            href="/settings"
+            className="mt-3 text-[11px] text-brand font-medium hover:underline"
+          >
+            Manage brand access →
+          </a>
+        </>
+      )}
     </div>
   );
 }
