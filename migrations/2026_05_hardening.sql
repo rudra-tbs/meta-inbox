@@ -32,9 +32,9 @@ alter table messages
 -- Backfill: anything with a whatsapp_message_id is SENT, anything else is PENDING.
 update messages
    set delivered_status = case
-         when direction = 'INBOUND' then 'SENT'
-         when whatsapp_message_id is not null then 'SENT'
-         else 'PENDING'
+         when direction = 'INBOUND' then 'SENT'::message_delivery_status
+         when whatsapp_message_id is not null then 'SENT'::message_delivery_status
+         else 'PENDING'::message_delivery_status
        end
  where delivered_status is null;
 
