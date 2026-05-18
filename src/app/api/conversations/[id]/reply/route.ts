@@ -71,7 +71,7 @@ export async function POST(
     .single();
 
   try {
-    const waId = await sendWhatsAppMessage(conversation.phone_number, message.trim());
+    const waId = await sendWhatsAppMessage(conversation.brand, conversation.phone_number, message.trim());
     if (waId && insertedMsg?.id) {
       await supabase.from('messages').update({ whatsapp_message_id: waId }).eq('id', insertedMsg.id);
     }
