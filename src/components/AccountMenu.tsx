@@ -72,6 +72,21 @@ export default function AccountMenu({ user }: AccountMenuProps) {
               {user.role}
             </div>
           </div>
+          {user.role === 'ADMIN' && (
+            <button
+              onClick={() => {
+                setOpen(false);
+                router.push('/admin');
+              }}
+              className="w-full text-left px-3 py-2 text-sm text-text-default hover:bg-canvas transition-colors flex items-center gap-2"
+              role="menuitem"
+            >
+              <span>Admin panel</span>
+              <span className="ml-auto text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-brand-soft text-brand">
+                Admin
+              </span>
+            </button>
+          )}
           <button
             onClick={() => {
               setOpen(false);
