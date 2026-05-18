@@ -1,9 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Conversation, QualificationData, Brand } from '@/types';
-import { SYSTEM_PROMPT } from '@/lib/system-prompt';
 import { callOpenRouter } from '@/lib/openrouter';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { findOrCreateContact, updateContactFromQualification } from '@/lib/contact-merge';
+import { getBrandSystemPrompt } from '@/lib/brand-contexts';
 
 function stripThinkingBlocks(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
@@ -44,8 +44,9 @@ export async function handleAIResponse(
     .order('created_at', { ascending: true })
     .limit(20);
 
+  const systemPrompt = await getBrandSystemPrompt(supabase, conversation.brand);
   const messages: Array<{ role: string; content: string }> = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
   ];
 
   const known: string[] = [];
