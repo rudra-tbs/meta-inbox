@@ -6,7 +6,38 @@ import { findOrCreateContact, updateContactFromQualification } from '@/lib/conta
 import { getBrandSystemPrompt } from '@/lib/brand-contexts';
 
 function stripThinkingBlocks(text: string): string {
-  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+    .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
+    .trim();
+}
+
+// Strip the qualification_data block (and anything after it) from the clean
+// reply that gets sent to the lead. We rely on the explicit tag boundary so
+// conversational text containing { } is not corrupted.
+function extractCleanText(raw: string): string {
+  const tagSplit = raw.split('<qualification_data>');
+  if (tagSplit.length > 1) return tagSplit[0].trim();
+  // No tag — try to strip a trailing JSON object only if it sits at the very
+  // end of the message and looks like the qualification payload.
+  const trailing = raw.match(/\s*(\{[\s\S]*"brand"[\s\S]*\})\s*$/);
+  if (trailing) return raw.slice(0, raw.length - trailing[0].length).trim();
+  return raw.trim();
+}
+
+const CALLBACK_PHRASES = [
+  'will reach out', 'will get in touch', 'will contact you', 'team will call',
+  'someone will follow up', 'planner will reach out', 'get back to you',
+  'arrange a call', 'schedule a call', 'book a call', 'set up a call',
+  'arrange a meeting', 'call me', 'please call', 'want a call', 'need a call',
+  'can you call', 'give me a call', 'pl arrange', 'pls call',
+];
+
+function detectCallback(cleanText: string, inboundMessage: string): boolean {
+  const a = cleanText.toLowerCase();
+  const b = inboundMessage.toLowerCase();
+  return CALLBACK_PHRASES.some((p) => a.includes(p) || b.includes(p));
 }
 
 export async function handleAIResponse(
@@ -52,7 +83,11 @@ export async function handleAIResponse(
   const known: string[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const c = contactRow as any;
-  if (c?.name) known.push(`Name: ${c.name}`);
+  // Prefer the contact record's name, but fall back to the WhatsApp profile
+  // name from the conversation — otherwise the AI re-asks "what's your name?"
+  // when we already have it from Meta.
+  const knownName = c?.name ?? conversation.contact_name;
+  if (knownName) known.push(`Name: ${knownName}`);
   if (c?.city) known.push(`City: ${c.city}`);
   if (c?.wedding_date) known.push(`Wedding date: ${c.wedding_date}`);
   if (c?.guest_count) known.push(`Guest count: ${c.guest_count}`);
@@ -99,9 +134,7 @@ export async function handleAIResponse(
     return;
   }
 
-  // Strip qualification block
-  const parts = rawAIResponse.split('<qualification_data>');
-  const cleanText = parts[0].replace(/\{[\s\S]*$/, '').trim();
+  const cleanText = extractCleanText(rawAIResponse);
 
   const qualMatch =
     rawAIResponse.match(/<qualification_data>([\s\S]*?)<\/qualification_data>/) ??
@@ -113,23 +146,11 @@ export async function handleAIResponse(
     try {
       qualData = JSON.parse(qualJson) as QualificationData;
     } catch {
-      /* ignore */
+      console.warn(`[AI Handler] qual_data JSON parse failed for ${conversation.id}`);
     }
   }
 
-  // Callback phrase detection (both directions)
-  const CALLBACK_PHRASES = [
-    'will reach out', 'will get in touch', 'will contact you', 'team will call',
-    'someone will follow up', 'planner will reach out', 'get back to you',
-    'arrange a call', 'schedule a call', 'book a call', 'set up a call',
-    'arrange a meeting', 'call me', 'please call', 'want a call', 'need a call',
-    'can you call', 'give me a call', 'pl arrange', 'pls call',
-  ];
-  const lowerClean = cleanText.toLowerCase();
-  const lowerInbound = inboundMessage.toLowerCase();
-  const triggersCallback = CALLBACK_PHRASES.some(
-    (phrase) => lowerClean.includes(phrase) || lowerInbound.includes(phrase)
-  );
+  const triggersCallback = detectCallback(cleanText, inboundMessage);
 
   console.log(`[AI Handler] conv=${conversation.id} mode=${conversation.mode} — generated reply`);
 
@@ -153,20 +174,28 @@ export async function handleAIResponse(
   }
 
   if (conversation.mode === 'HUMAN') {
-    // Save as suggestion — DO NOT send, DO NOT insert as AI message
+    // Save as suggestion — DO NOT send, DO NOT insert as AI message.
+    // Preserve the previous suggestion if the RM hasn't consumed it yet,
+    // so a chatty lead's later messages don't blow away the earlier hint.
     const updates: Record<string, unknown> = {
-      suggested_reply: cleanText,
-      suggested_reply_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+    if (!conversation.suggested_reply) {
+      updates.suggested_reply = cleanText;
+      updates.suggested_reply_at = new Date().toISOString();
+    }
+    // callback flag: set only on detection. Cleared on human reply (see reply route).
     if (triggersCallback) updates.callback_required = true;
-    if (qualData?.is_qualified) updates.status = 'QUALIFIED';
+    if (qualData?.is_qualified) {
+      updates.status = 'QUALIFIED';
+      updates.needs_human_reply = true;
+    }
     if (finalContactId !== contactId) updates.contact_id = finalContactId;
     await supabase.from('conversations').update(updates).eq('id', conversation.id);
     return;
   }
 
-  // AI mode — save first, then send, then stamp the WA id back
+  // AI mode — save as PENDING, send, then mark SENT (or FAILED).
   const { data: insertedMsg } = await supabase
     .from('messages')
     .insert({
@@ -176,29 +205,55 @@ export async function handleAIResponse(
       sender_user_id: null,
       content: cleanText,
       whatsapp_message_id: null,
+      delivered_status: 'PENDING',
       created_at: new Date().toISOString(),
     })
     .select('id')
     .single();
 
+  let sendOk = false;
+  let sendError: string | null = null;
+  let waId: string | null = null;
   try {
-    const waId = await sendWhatsAppMessage(conversation.brand, conversation.phone_number, cleanText);
-    if (waId && insertedMsg?.id) {
-      await supabase.from('messages').update({ whatsapp_message_id: waId }).eq('id', insertedMsg.id);
-    }
+    waId = await sendWhatsAppMessage(conversation.brand, conversation.phone_number, cleanText);
+    sendOk = true;
   } catch (err) {
+    sendError = err instanceof Error ? err.message : String(err);
     console.error('WhatsApp delivery failed (reply saved to DB):', err);
+  }
+
+  if (insertedMsg?.id) {
+    if (sendOk) {
+      await supabase
+        .from('messages')
+        .update({ whatsapp_message_id: waId, delivered_status: 'SENT', send_error: null })
+        .eq('id', insertedMsg.id);
+    } else {
+      await supabase
+        .from('messages')
+        .update({ delivered_status: 'FAILED', send_error: sendError })
+        .eq('id', insertedMsg.id);
+    }
   }
 
   const updates: Record<string, unknown> = {
     is_first_contact: false,
     last_message_at: new Date().toISOString(),
+    last_message_preview: cleanText.slice(0, 500),
+    // Clear or set callback flag in lockstep with this generation.
+    callback_required: triggersCallback,
     suggested_reply: null,
     suggested_reply_at: null,
     updated_at: new Date().toISOString(),
   };
-  if (triggersCallback) updates.callback_required = true;
-  if (qualData?.is_qualified) updates.status = 'QUALIFIED';
+  if (qualData?.is_qualified) {
+    // Auto-handoff: once qualified, AI bows out and a planner takes over.
+    updates.status = 'QUALIFIED';
+    updates.mode = 'HUMAN';
+    updates.needs_human_reply = true;
+    updates.manually_set_human = true;
+    updates.last_human_message_at = new Date().toISOString();
+  }
   if (finalContactId !== contactId) updates.contact_id = finalContactId;
 
   await supabase.from('conversations').update(updates).eq('id', conversation.id);

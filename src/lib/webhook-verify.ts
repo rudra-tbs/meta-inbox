@@ -4,14 +4,14 @@ import crypto from 'crypto';
  * Verifies the X-Hub-Signature-256 header against the raw request body
  * using the Meta App Secret. Returns true if valid.
  *
- * If WHATSAPP_APP_SECRET is not set, returns true (dev mode bypass) and
- * logs a warning — never deploy without setting the secret.
+ * Fails closed when WHATSAPP_APP_SECRET is missing — a misconfigured
+ * env var must not turn the webhook into an open endpoint.
  */
 export function verifyWebhookSignature(rawBody: string, signature: string | null): boolean {
   const secret = process.env.WHATSAPP_APP_SECRET;
   if (!secret) {
-    console.warn('[Webhook] WHATSAPP_APP_SECRET not set — skipping signature check (DEV ONLY)');
-    return true;
+    console.error('[Webhook] WHATSAPP_APP_SECRET not set — refusing request');
+    return false;
   }
   if (!signature) return false;
 

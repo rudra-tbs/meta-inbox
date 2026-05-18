@@ -7,6 +7,15 @@ import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId, getConversationFilter } from '@/lib/auth';
 import { computeLeadScore } from '@/lib/lead-score';
 
+// Strip postgrest-filter and SQL-ilike special chars from user search input so
+// they can't escape the .or() filter or expand wildcards unintentionally.
+function sanitizeSearch(raw: string): string {
+  return raw.replace(/[,()*%_\\]/g, '').trim();
+}
+
+const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 500;
+
 export async function GET(request: NextRequest) {
   const cookieStore = cookies();
 
@@ -43,7 +52,14 @@ export async function GET(request: NextRequest) {
   const snoozed = searchParams.get('snoozed') === 'true';
   const tag = searchParams.get('tag');
   const stage = searchParams.get('stage');
-  const search = searchParams.get('search');
+  const rawSearch = searchParams.get('search') ?? '';
+  const search = rawSearch ? sanitizeSearch(rawSearch) : '';
+
+  const limit = Math.min(
+    MAX_LIMIT,
+    Math.max(1, parseInt(searchParams.get('limit') ?? String(DEFAULT_LIMIT)) || DEFAULT_LIMIT)
+  );
+  const cursor = searchParams.get('cursor'); // ISO timestamp of last_message_at from prior page
 
   const filter = await getConversationFilter(appUser.id);
 
@@ -55,10 +71,12 @@ export async function GET(request: NextRequest) {
       assigned_user:users!assigned_to(name)
     `)
     .eq('brand', brand)
-    .order('last_message_at', { ascending: false });
-  if (!includeAllChannels) query = query.eq('channel', channel);
+    .order('last_message_at', { ascending: false })
+    .limit(limit);
 
-  // Hide snoozed (whose snooze hasn't expired) unless explicitly requested
+  if (!includeAllChannels) query = query.eq('channel', channel);
+  if (cursor) query = query.lt('last_message_at', cursor);
+
   if (snoozed) {
     query = query.not('snoozed_until', 'is', null).gte('snoozed_until', new Date().toISOString());
   } else {
@@ -80,12 +98,15 @@ export async function GET(request: NextRequest) {
   if (pending) query = query.or('needs_human_reply.eq.true,callback_required.eq.true');
   if (stage) query = query.eq('crm_stage_id', parseInt(stage));
   if (tag) query = query.contains('tags', [tag]);
+
   if (search) {
-    // Full-text search across message content + name/phone
+    // Bounded FTS over messages: limit to 500 hits so a popular term doesn't
+    // pull the entire messages table back through the API.
     const { data: fts } = await supabase
       .from('messages')
       .select('conversation_id')
-      .textSearch('search_vector', search, { type: 'websearch', config: 'english' });
+      .textSearch('search_vector', search, { type: 'websearch', config: 'english' })
+      .limit(500);
     const ftsIds = Array.from(new Set((fts ?? []).map((m) => m.conversation_id)));
     const idClause = ftsIds.length > 0 ? `,id.in.(${ftsIds.join(',')})` : '';
     query = query.or(
@@ -96,47 +117,35 @@ export async function GET(request: NextRequest) {
   const { data: conversations, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Fetch last message + inbound count per conversation
+  // Inbound message count per conversation (drives lead score). Bounded to
+  // the conversations we're actually returning. Cheap with the new
+  // (conversation_id, created_at) composite index.
   const convIds = (conversations ?? []).map((c) => c.id);
-  const lastMessages: Record<string, string> = {};
   const inboundCounts: Record<string, number> = {};
   if (convIds.length > 0) {
     const { data: msgs } = await supabase
       .from('messages')
-      .select('conversation_id, content, direction, created_at')
+      .select('conversation_id')
       .in('conversation_id', convIds)
-      .order('created_at', { ascending: false });
-    if (msgs) {
-      for (const m of msgs) {
-        if (!lastMessages[m.conversation_id]) {
-          lastMessages[m.conversation_id] = m.content;
-        }
-        if (m.direction === 'INBOUND') {
-          inboundCounts[m.conversation_id] = (inboundCounts[m.conversation_id] ?? 0) + 1;
-        }
-      }
+      .eq('direction', 'INBOUND');
+    for (const m of msgs ?? []) {
+      inboundCounts[m.conversation_id] = (inboundCounts[m.conversation_id] ?? 0) + 1;
     }
   }
 
-  // Fetch sibling conversations (same contact, other channel)
+  // Sibling conversations: same contact on a different channel/brand.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const contactIds = (conversations ?? []).map((c: any) => c.contact_id).filter(Boolean);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const siblings: Record<string, Array<{ id: string; channel: string; brand: string }>> = {};
   if (contactIds.length > 0) {
     const { data: allConvs } = await supabase
       .from('conversations')
       .select('id, contact_id, brand, channel')
       .in('contact_id', contactIds);
-    if (allConvs) {
-      for (const sc of allConvs) {
-        if (!convIds.includes(sc.id)) continue; // safety
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const sc of allConvs as any[]) {
-        if (!siblings[sc.contact_id]) siblings[sc.contact_id] = [];
-        siblings[sc.contact_id].push({ id: sc.id, channel: sc.channel, brand: sc.brand });
-      }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const sc of (allConvs ?? []) as any[]) {
+      if (!siblings[sc.contact_id]) siblings[sc.contact_id] = [];
+      siblings[sc.contact_id].push({ id: sc.id, channel: sc.channel, brand: sc.brand });
     }
   }
 
@@ -149,9 +158,10 @@ export async function GET(request: NextRequest) {
       ...c,
       contact: undefined,
       assigned_user: undefined,
-      last_message: lastMessages[c.id] ?? null,
+      // Use the cached preview column. Backfilled by migration; webhook + reply
+      // routes keep it current so we never have to pull every message again.
+      last_message: c.last_message_preview ?? null,
       assigned_user_name: assignedUser?.name ?? null,
-      // Flatten contact qualification fields onto conversation
       contact_name: contact?.name ?? c.contact_name,
       city: contact?.city ?? c.city,
       wedding_date: contact?.wedding_date ?? c.wedding_date,

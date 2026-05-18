@@ -45,6 +45,15 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid mode' }, { status: 400 });
   }
 
+  // Read the previous last_human_message_at so we can preserve it in the
+  // audit log even if we clear it on the row.
+  const { data: prev } = await supabase
+    .from('conversations')
+    .select('last_human_message_at')
+    .eq('id', params.id)
+    .single();
+  const prevLastHuman = prev?.last_human_message_at ?? null;
+
   const updates: Record<string, unknown> = {
     mode,
     updated_at: new Date().toISOString(),
@@ -54,7 +63,10 @@ export async function POST(
     updates.last_human_message_at = new Date().toISOString();
     updates.manually_set_human = true;
   } else {
-    // Clear both so neither the 30-day window nor the manual flag re-blocks AI
+    // Toggle to AI: respect the operator's choice — the next inbound goes
+    // straight to AI regardless of the 30-day window. The previous
+    // last_human_message_at is captured in the MODE_CHANGED event below for
+    // SLA reporting, and remains derivable from the messages table.
     updates.last_human_message_at = null;
     updates.manually_set_human = false;
   }
@@ -71,7 +83,7 @@ export async function POST(
   await logEvent(supabase, params.id, 'MODE_CHANGED', {
     actorUserId: appUser.id,
     actorName: appUser.name,
-    metadata: { to: mode },
+    metadata: { to: mode, prev_last_human_message_at: prevLastHuman },
   });
 
   // If switching to AI, check if the last message is unanswered inbound — if so, trigger AI immediately

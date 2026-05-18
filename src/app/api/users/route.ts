@@ -6,7 +6,7 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
 
-async function getAuthenticatedAdmin() {
+async function getAuthenticatedUser() {
   const cookieStore = cookies();
 
   const supabaseAuth = createSupabaseSSR(
@@ -33,24 +33,86 @@ async function getAuthenticatedAdmin() {
   return appUser;
 }
 
-export async function GET() {
-  const appUser = await getAuthenticatedAdmin();
+export async function GET(request: NextRequest) {
+  const appUser = await getAuthenticatedUser();
   if (!appUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // All authenticated users can list users (for assign dropdown)
   const supabase = createServerClient();
+  const { searchParams } = new URL(request.url);
+  const assignable = searchParams.get('assignable') === 'true';
+  const brand = searchParams.get('brand');
+  const channel = searchParams.get('channel');
+
+  // Admins always get the full user list with PII (for the Users settings tab).
+  // Non-admins only ever get the "assignable" view: users with overlapping
+  // access to the brand+channel they're working in, and only id/name/role.
+  if (appUser.role !== 'ADMIN') {
+    if (!assignable || !brand || !channel) {
+      // Refuse general user-list requests from non-admins — prevents agents
+      // from enumerating staff PII via /api/users.
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const { data: accessRows } = await supabase
+      .from('user_access')
+      .select('user_id')
+      .eq('brand', brand)
+      .eq('channel', channel);
+    const userIds = (accessRows ?? []).map((r) => r.user_id);
+
+    const { data: admins } = await supabase
+      .from('users')
+      .select('id, name, role')
+      .eq('role', 'ADMIN');
+
+    const { data: agents } = userIds.length
+      ? await supabase
+          .from('users')
+          .select('id, name, role')
+          .in('id', userIds)
+      : { data: [] };
+
+    const merged = [...(admins ?? []), ...(agents ?? [])];
+    const dedup = Array.from(new Map(merged.map((u) => [u.id, u])).values());
+    dedup.sort((a, b) => a.name.localeCompare(b.name));
+    return NextResponse.json(dedup);
+  }
+
+  // Admin path — full PII view for the settings page.
+  if (assignable && brand && channel) {
+    // Even an admin may want the filtered list (the assign dropdown uses this).
+    const { data: accessRows } = await supabase
+      .from('user_access')
+      .select('user_id')
+      .eq('brand', brand)
+      .eq('channel', channel);
+    const userIds = (accessRows ?? []).map((r) => r.user_id);
+    const { data: admins } = await supabase
+      .from('users')
+      .select('id, name, role')
+      .eq('role', 'ADMIN');
+    const { data: agents } = userIds.length
+      ? await supabase
+          .from('users')
+          .select('id, name, role')
+          .in('id', userIds)
+      : { data: [] };
+    const merged = [...(admins ?? []), ...(agents ?? [])];
+    const dedup = Array.from(new Map(merged.map((u) => [u.id, u])).values());
+    dedup.sort((a, b) => a.name.localeCompare(b.name));
+    return NextResponse.json(dedup);
+  }
+
   const { data: users, error } = await supabase
     .from('users')
     .select('*, user_access(*)')
     .order('name');
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
   return NextResponse.json(users ?? []);
 }
 
 export async function POST(request: NextRequest) {
-  const appUser = await getAuthenticatedAdmin();
+  const appUser = await getAuthenticatedUser();
   if (!appUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   // Only admins can create users

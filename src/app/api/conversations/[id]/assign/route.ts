@@ -47,15 +47,47 @@ export async function POST(
 
   const now = new Date().toISOString();
 
-  // Get assigned user name for response
+  // Fetch the conversation first so we can validate the assignee actually has
+  // access to its brand+channel. Without this check, an admin could assign a
+  // conversation to a user who can't see it, orphaning the thread.
+  const { data: conv, error: convErr } = await supabase
+    .from('conversations')
+    .select('brand, channel')
+    .eq('id', params.id)
+    .single();
+  if (convErr || !conv) {
+    return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+  }
+
   let assignedUserName: string | null = null;
   if (userId) {
     const { data: assignedUser } = await supabase
       .from('users')
-      .select('name')
+      .select('name, role')
       .eq('id', userId)
       .single();
-    assignedUserName = assignedUser?.name ?? null;
+    if (!assignedUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 400 });
+    }
+    assignedUserName = assignedUser.name;
+
+    // Admins see everything by default. For agents, verify they have an
+    // access row for this brand+channel.
+    if (assignedUser.role !== 'ADMIN') {
+      const { data: access } = await supabase
+        .from('user_access')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('brand', conv.brand)
+        .eq('channel', conv.channel)
+        .maybeSingle();
+      if (!access) {
+        return NextResponse.json(
+          { error: `${assignedUser.name} does not have access to ${conv.brand}/${conv.channel}.` },
+          { status: 400 }
+        );
+      }
+    }
   }
 
   const { data: updated, error } = await supabase

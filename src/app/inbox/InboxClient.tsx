@@ -28,6 +28,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   const [stages, setStages] = useState<CRMStage[]>([]);
   const [refreshingStages, setRefreshingStages] = useState(false);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
@@ -78,7 +79,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
     }
     if (tagFilter) params.set('tag', tagFilter);
     if (stageFilter != null) params.set('stage', String(stageFilter));
-    if (search) params.set('search', search);
+    if (debouncedSearch) params.set('search', debouncedSearch);
 
     const res = await fetch(`/api/conversations?${params.toString()}`);
     if (res.ok) {
@@ -98,7 +99,13 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
       setConversations(sorted);
     }
     setLoadingConvs(false);
-  }, [activeBrand, activeChannel, statusFilter, tagFilter, stageFilter, search]);
+  }, [activeBrand, activeChannel, statusFilter, tagFilter, stageFilter, debouncedSearch]);
+
+  // Debounce search so we don't hammer /api/conversations on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const fetchStages = useCallback(async () => {
     const res = await fetch(`/api/crm-stages?brand=${activeBrand}&channel=${activeChannel === 'ALL' ? 'WA' : activeChannel}`);
@@ -167,18 +174,46 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
     const supabase = getSupabaseBrowser();
     const channel = supabase
       .channel('inbox-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => fetchConversations())
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conversations' },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (payload: any) => {
+          // INSERT of a new conversation needs the joined data (contact, assigned_user
+          // name) so fall back to refetch. UPDATE / DELETE patch local state to avoid
+          // a per-event refetch storm.
+          if (payload.eventType === 'INSERT') {
+            fetchConversations();
+            return;
+          }
+          if (payload.eventType === 'DELETE') {
+            setConversations((prev) => prev.filter((c) => c.id !== payload.old?.id));
+            return;
+          }
+          if (payload.eventType === 'UPDATE' && payload.new) {
+            const updated = payload.new as Conversation;
+            setConversations((prev) => {
+              const existing = prev.find((c) => c.id === updated.id);
+              if (!existing) {
+                // Conversation entered scope (filter change) — refetch to pick it up.
+                fetchConversations();
+                return prev;
+              }
+              return prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c));
+            });
+          }
+        }
+      )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'messages' },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (payload: any) => {
-          console.log('[Realtime] messages event:', payload.eventType, {
-            direction: payload.new?.direction,
-            conversation_id: payload.new?.conversation_id,
-          });
           const newMsg = (payload.new ?? payload.old) as Message;
-          if (newMsg && selectedIdRef.current) {
+          if (!newMsg) return;
+
+          // Refresh the open chat if the message belongs to it.
+          if (selectedIdRef.current) {
             const selectedConv = conversationsRef.current.find((c) => c.id === selectedIdRef.current);
             const sameConv = newMsg.conversation_id === selectedIdRef.current;
             const sameContactInAllView =
@@ -189,33 +224,54 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
               fetchMessages(selectedIdRef.current);
             }
           }
-          if (payload.eventType === 'INSERT' && payload.new?.direction === 'INBOUND') {
-            const checks = {
-              initialLoadDone: initialLoadDoneRef.current,
-              notSelected: payload.new.conversation_id !== selectedIdRef.current,
-              hasWindow: typeof window !== 'undefined',
-              hasNotificationApi: typeof window !== 'undefined' && 'Notification' in window,
-              permission: typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'n/a',
-              visibility: typeof document !== 'undefined' ? document.visibilityState : 'n/a',
-            };
-            console.log('[Realtime] INBOUND notification checks:', checks);
-            if (
-              checks.initialLoadDone &&
-              checks.notSelected &&
-              checks.hasWindow &&
-              checks.hasNotificationApi &&
-              checks.permission === 'granted' &&
-              checks.visibility !== 'visible'
-            ) {
-              const conv = conversationsRef.current.find((c) => c.id === payload.new.conversation_id);
-              const title = conv?.contact_name ? `New message from ${conv.contact_name}` : 'New WhatsApp message';
-              console.log('[Realtime] firing browser notification:', title);
-              new Notification(title, { body: payload.new.content?.slice(0, 80) });
-            } else {
-              console.log('[Realtime] notification suppressed (a check above is false)');
+
+          // Inbound INSERT → browser notification + local list patch.
+          if (payload.eventType === 'INSERT') {
+            const inScope = conversationsRef.current.some((c) => c.id === newMsg.conversation_id);
+            if (!inScope) {
+              // New conversation we don't have yet — refetch the list.
+              fetchConversations();
+              return;
             }
+
+            // Patch the existing conversation row in place (preview + unread).
+            setConversations((prev) =>
+              prev.map((c) => {
+                if (c.id !== newMsg.conversation_id) return c;
+                const inboundBump = newMsg.direction === 'INBOUND' && c.id !== selectedIdRef.current;
+                return {
+                  ...c,
+                  last_message: newMsg.content,
+                  last_message_preview: newMsg.content,
+                  last_message_at: newMsg.created_at,
+                  unread_count: inboundBump ? (c.unread_count ?? 0) + 1 : (c.unread_count ?? 0),
+                };
+              })
+            );
+
+            if (newMsg.direction === 'INBOUND') {
+              const isReady =
+                initialLoadDoneRef.current &&
+                newMsg.conversation_id !== selectedIdRef.current &&
+                typeof window !== 'undefined' &&
+                'Notification' in window &&
+                Notification.permission === 'granted' &&
+                document.visibilityState !== 'visible';
+              if (isReady) {
+                const conv = conversationsRef.current.find((c) => c.id === newMsg.conversation_id);
+                const title = conv?.contact_name ? `New message from ${conv.contact_name}` : 'New WhatsApp message';
+                new Notification(title, { body: newMsg.content?.slice(0, 80) });
+              }
+            }
+            return;
           }
-          fetchConversations();
+
+          // UPDATE on a message (delivery status, etc.) — only patch the open chat.
+          if (payload.eventType === 'UPDATE' && newMsg.conversation_id === selectedIdRef.current) {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === newMsg.id ? { ...m, ...newMsg } : m))
+            );
+          }
         }
       )
       .subscribe();
@@ -424,7 +480,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
               <p className="text-[12px] text-text-secondary mt-1 leading-snug">
                 Pick one from the sidebar to read history and reply.
               </p>
-              <div className="mt-5 inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-text-muted">
+              <div className="mt-5 hidden md:inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-text-muted">
                 <span><kbd className="px-1 py-0.5 bg-muted rounded text-text-secondary">⌘K</kbd> palette</span>
                 <span><kbd className="px-1 py-0.5 bg-muted rounded text-text-secondary">J</kbd>/<kbd className="px-1 py-0.5 bg-muted rounded text-text-secondary">K</kbd> nav</span>
                 <span><kbd className="px-1 py-0.5 bg-muted rounded text-text-secondary">T</kbd> toggle</span>
