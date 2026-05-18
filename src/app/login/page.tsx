@@ -1,8 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getSupabaseBrowser } from '@/lib/supabase';
+
+const CALLBACK_ERROR_LABELS: Record<string, string> = {
+  verification_failed: 'That verification link is invalid or has expired. Try signing up again.',
+};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -10,6 +14,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Read ?error= from the URL on mount without using useSearchParams (which
+  // forces a Suspense boundary for static rendering).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const raw = new URLSearchParams(window.location.search).get('error');
+    if (raw) {
+      setError(CALLBACK_ERROR_LABELS[raw] ?? raw);
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

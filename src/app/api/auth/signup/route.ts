@@ -5,8 +5,22 @@ import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 
+const DEFAULT_ALLOWED_DOMAINS = 'acceltancy.in,thebrideside.in';
+
+function getAllowedDomains(): string[] {
+  return (process.env.ALLOWED_SIGNUP_DOMAINS ?? DEFAULT_ALLOWED_DOMAINS)
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function emailDomain(email: string): string {
+  const at = email.lastIndexOf('@');
+  return at >= 0 ? email.slice(at + 1).toLowerCase() : '';
 }
 
 export async function POST(request: NextRequest) {
@@ -19,39 +33,29 @@ export async function POST(request: NextRequest) {
   if (!isValidEmail(email)) return NextResponse.json({ error: 'Valid email is required' }, { status: 400 });
   if (password.length < 8) return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
 
-  const supabase = createServerClient();
+  const allowed = getAllowedDomains();
+  const domain = emailDomain(email);
+  if (!allowed.includes(domain)) {
+    const niceList = allowed.map((d) => `@${d}`).join(' or ');
+    return NextResponse.json(
+      { error: `Signup is restricted to ${niceList} email addresses.` },
+      { status: 403 }
+    );
+  }
 
-  // Reject if a users row with this email already exists.
-  const { data: existingUser } = await supabase.from('users').select('id').eq('email', email).maybeSingle();
+  const serviceClient = createServerClient();
+
+  // Reject if a users row OR an auth user with this email already exists.
+  const { data: existingUser } = await serviceClient.from('users').select('id').eq('email', email).maybeSingle();
   if (existingUser) {
-    return NextResponse.json({ error: 'An account with this email already exists' }, { status: 409 });
+    return NextResponse.json({ error: 'An account with this email already exists. Sign in instead.' }, { status: 409 });
   }
 
-  const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-  });
-
-  if (authError || !authData.user) {
-    return NextResponse.json({ error: authError?.message ?? 'Failed to create account' }, { status: 500 });
-  }
-
-  const { data: newUser, error: userError } = await supabase
-    .from('users')
-    .insert({ auth_id: authData.user.id, name, email, role: 'AGENT' })
-    .select('*')
-    .single();
-
-  if (userError || !newUser) {
-    // Roll back the auth user so the email isn't permanently locked out.
-    await supabase.auth.admin.deleteUser(authData.user.id).catch(() => {});
-    return NextResponse.json({ error: userError?.message ?? 'Failed to save profile' }, { status: 500 });
-  }
-
-  // Sign the user in immediately so the rest of the onboarding flow has a session.
+  // Use the anon client's signUp so Supabase sends the confirmation email automatically.
+  // The user is NOT signed in until they click the email link → /auth/callback exchanges
+  // the code for a session and creates the users row.
   const cookieStore = cookies();
-  const supabaseAuth = createSupabaseSSR(
+  const supabaseAnon = createSupabaseSSR(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -66,10 +70,32 @@ export async function POST(request: NextRequest) {
     }
   );
 
-  const { error: signInError } = await supabaseAuth.auth.signInWithPassword({ email, password });
-  if (signInError) {
-    return NextResponse.json({ error: 'Account created, but sign-in failed. Try logging in.' }, { status: 500 });
+  const origin = request.headers.get('origin') ?? process.env.NEXT_PUBLIC_APP_URL ?? '';
+  const redirectTo = `${origin}/auth/callback`;
+
+  const { data: signUpData, error: signUpError } = await supabaseAnon.auth.signUp({
+    email,
+    password,
+    options: {
+      emailRedirectTo: redirectTo,
+      data: { name },
+    },
+  });
+
+  if (signUpError) {
+    // Supabase returns the same error message ("User already registered") for both new and
+    // existing-unconfirmed cases. Surface a useful prompt either way.
+    const msg = signUpError.message ?? 'Could not create account';
+    const status = /already/i.test(msg) ? 409 : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 
-  return NextResponse.json({ id: newUser.id, name: newUser.name, email: newUser.email }, { status: 201 });
+  if (!signUpData.user) {
+    return NextResponse.json({ error: 'Signup did not return a user' }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    awaitingVerification: true,
+    email,
+  }, { status: 201 });
 }
