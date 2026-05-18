@@ -4,8 +4,9 @@ import { NextResponse, type NextRequest } from 'next/server';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Public routes
+  // Public routes — landing page handles its own auth-redirect server-side
   if (
+    pathname === '/' ||
     pathname === '/login' ||
     pathname === '/signup' ||
     pathname === '/api/auth/signup' ||

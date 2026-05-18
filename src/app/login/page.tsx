@@ -43,8 +43,8 @@ export default function LoginPage() {
           <div className="w-12 h-12 bg-brand rounded-full flex items-center justify-center mx-auto mb-4">
             <span className="text-text-inverse font-bold text-xl">A</span>
           </div>
-          <h1 className="text-2xl font-semibold text-text-primary">Acceltancy Inbox</h1>
-          <p className="text-sm text-text-secondary mt-1">Sign in to your account</p>
+          <h1 className="text-2xl font-semibold text-text-primary">Inbox</h1>
+          <p className="text-sm text-text-secondary mt-1">Sign in with your team account</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

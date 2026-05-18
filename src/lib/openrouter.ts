@@ -12,7 +12,7 @@ export async function callOpenRouter(messages: Array<{ role: string; content: st
       'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL ?? '',
-      'X-Title': 'Acceltancy Inbox',
+      'X-Title': 'Inbox',
     },
     body: JSON.stringify({
       model: primary,

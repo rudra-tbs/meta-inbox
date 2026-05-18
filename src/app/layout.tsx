@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Acceltancy Inbox',
-  description: 'Multi-channel inbox for Acceltancy',
+  title: 'Inbox',
+  description: 'Internal team inbox for Acceltancy wedding brands',
 };
 
 export default function RootLayout({
