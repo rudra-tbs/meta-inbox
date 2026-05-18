@@ -6,8 +6,10 @@ import type { AppUser } from '@/types';
 import Button from '@/components/ui/Button';
 import ProfileTab from './tabs/ProfileTab';
 import ChannelsTab from './tabs/ChannelsTab';
+import UsersTab from './tabs/UsersTab';
+import AdminChannelsTab from './tabs/AdminChannelsTab';
 
-type TabId = 'profile' | 'channels';
+type TabId = 'profile' | 'channels' | 'users' | 'admin-channels';
 
 interface SettingsClientProps {
   currentUser: AppUser;
@@ -39,9 +41,16 @@ export default function SettingsClient({ currentUser }: SettingsClientProps) {
 
   useEffect(() => { loadMe(); }, [loadMe]);
 
+  const isAdmin = currentUser.role === 'ADMIN';
   const tabs: Array<{ id: TabId; label: string }> = [
     { id: 'profile', label: 'Profile' },
-    { id: 'channels', label: 'Channels' },
+    { id: 'channels', label: 'My channels' },
+    ...(isAdmin
+      ? ([
+          { id: 'users', label: 'Users' },
+          { id: 'admin-channels', label: 'All channels' },
+        ] as Array<{ id: TabId; label: string }>)
+      : []),
   ];
 
   return (
@@ -86,6 +95,8 @@ export default function SettingsClient({ currentUser }: SettingsClientProps) {
           <>
             {active === 'profile' && <ProfileTab me={me} onSaved={loadMe} />}
             {active === 'channels' && <ChannelsTab me={me} onChanged={loadMe} />}
+            {active === 'users' && isAdmin && <UsersTab currentUserId={me.id} />}
+            {active === 'admin-channels' && isAdmin && <AdminChannelsTab />}
           </>
         )}
 
