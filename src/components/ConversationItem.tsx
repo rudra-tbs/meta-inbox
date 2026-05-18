@@ -50,6 +50,8 @@ export default function ConversationItem({
   const initials = getInitials(conversation.contact_name, conversation.phone_number);
   const isSnoozed = conversation.snoozed_until && new Date(conversation.snoozed_until) > new Date();
   const score = conversation.lead_score ?? 0;
+  const unread = conversation.unread_count ?? 0;
+  const hasUnread = unread > 0 && !selected;
 
   // Single priority indicator — most urgent wins
   const indicator: { tone: 'warning' | 'danger' | 'snooze' | null; label: string } =
@@ -65,14 +67,21 @@ export default function ConversationItem({
       className={`group w-full text-left px-4 py-2.5 flex gap-3 transition-colors
         ${selected
           ? 'bg-brand-soft'
-          : 'hover:bg-canvas'}`}
+          : hasUnread
+            ? 'bg-success-soft/40 hover:bg-success-soft/60'
+            : 'hover:bg-canvas'}`}
     >
       {/* Avatar */}
       <div className="relative flex-shrink-0">
         <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-[11px] font-medium ${colorClass}`}>
           {initials}
         </div>
-        {indicator.tone && (
+        {hasUnread ? (
+          <span
+            className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-success ring-2 ring-elevated"
+            title={`${unread} unread`}
+          />
+        ) : indicator.tone && (
           <span className="absolute -bottom-0.5 -right-0.5 ring-2 ring-elevated rounded-full">
             <Dot tone={indicator.tone} pulse={indicator.tone === 'warning' || indicator.tone === 'danger'} />
           </span>
@@ -82,16 +91,23 @@ export default function ConversationItem({
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline justify-between gap-1.5">
-          <span className={`text-[13px] truncate ${selected ? 'text-text-primary font-semibold' : 'text-text-primary font-medium'}`}>
+          <span className={`text-[13px] truncate text-text-primary ${selected || hasUnread ? 'font-semibold' : 'font-medium'}`}>
             {displayName}
             {score >= 60 && <span className="ml-1 text-[11px]" title={`Lead score ${score}`}>🔥</span>}
           </span>
-          <span className="text-[11px] text-text-muted flex-shrink-0 tabular-nums">
-            {timeAgo(conversation.last_message_at)}
+          <span className="flex items-center gap-1.5 flex-shrink-0">
+            {hasUnread && (
+              <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-semibold leading-none rounded-full bg-success text-white tabular-nums">
+                {unread > 99 ? '99+' : unread}
+              </span>
+            )}
+            <span className={`text-[11px] tabular-nums ${hasUnread ? 'text-success font-semibold' : 'text-text-muted'}`}>
+              {timeAgo(conversation.last_message_at)}
+            </span>
           </span>
         </div>
 
-        <p className="text-[12px] text-text-secondary truncate mt-0.5 leading-tight">
+        <p className={`text-[12px] truncate mt-0.5 leading-tight ${hasUnread ? 'text-text-primary font-medium' : 'text-text-secondary'}`}>
           {conversation.last_message || 'No messages yet'}
         </p>
 

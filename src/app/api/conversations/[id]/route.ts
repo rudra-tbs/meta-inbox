@@ -95,7 +95,7 @@ export async function PATCH(
   if (!appUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json();
-  const allowed = ['callback_required', 'needs_human_reply', 'snoozed_until', 'tags'] as const;
+  const allowed = ['callback_required', 'needs_human_reply', 'snoozed_until', 'tags', 'unread_count'] as const;
   type PatchableField = typeof allowed[number];
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };

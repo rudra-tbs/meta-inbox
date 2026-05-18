@@ -94,6 +94,7 @@ export interface Conversation {
   suggested_reply_at: string | null;
   snoozed_until: string | null;
   tags: string[];
+  unread_count: number;
   lead_score: number;
   first_contact_at: string;
   last_message_at: string;

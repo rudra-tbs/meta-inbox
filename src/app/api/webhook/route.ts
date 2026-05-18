@@ -103,9 +103,14 @@ export async function POST(request: NextRequest) {
       created_at: new Date().toISOString(),
     });
 
+    const nextUnread = (conversation.unread_count ?? 0) + 1;
     await supabase
       .from('conversations')
-      .update({ last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .update({
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        unread_count: nextUnread,
+      })
       .eq('id', conversation.id);
 
     console.log(`[Webhook] conversation=${conversation.id} resolved_mode=${mode} → handing to AI handler`);

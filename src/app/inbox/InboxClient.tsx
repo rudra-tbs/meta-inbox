@@ -140,8 +140,23 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   useEffect(() => { fetchStages(); }, [fetchStages]);
 
   useEffect(() => {
-    if (selectedId) fetchMessages(selectedId);
-    else setMessages([]);
+    if (selectedId) {
+      fetchMessages(selectedId);
+      const conv = conversationsRef.current.find((c) => c.id === selectedId);
+      if (conv && (conv.unread_count ?? 0) > 0) {
+        fetch(`/api/conversations/${selectedId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ unread_count: 0 }),
+        }).then(() => {
+          setConversations((prev) =>
+            prev.map((c) => (c.id === selectedId ? { ...c, unread_count: 0 } : c))
+          );
+        });
+      }
+    } else {
+      setMessages([]);
+    }
   }, [selectedId, fetchMessages]);
 
   useEffect(() => {
@@ -158,6 +173,10 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
         { event: '*', schema: 'public', table: 'messages' },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (payload: any) => {
+          console.log('[Realtime] messages event:', payload.eventType, {
+            direction: payload.new?.direction,
+            conversation_id: payload.new?.conversation_id,
+          });
           const newMsg = (payload.new ?? payload.old) as Message;
           if (newMsg && selectedIdRef.current) {
             const selectedConv = conversationsRef.current.find((c) => c.id === selectedIdRef.current);
@@ -170,19 +189,31 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
               fetchMessages(selectedIdRef.current);
             }
           }
-          if (
-            payload.eventType === 'INSERT' &&
-            payload.new?.direction === 'INBOUND' &&
-            initialLoadDoneRef.current &&
-            payload.new.conversation_id !== selectedIdRef.current &&
-            typeof window !== 'undefined' &&
-            'Notification' in window &&
-            Notification.permission === 'granted' &&
-            document.visibilityState !== 'visible'
-          ) {
-            const conv = conversationsRef.current.find((c) => c.id === payload.new.conversation_id);
-            const title = conv?.contact_name ? `New message from ${conv.contact_name}` : 'New WhatsApp message';
-            new Notification(title, { body: payload.new.content?.slice(0, 80) });
+          if (payload.eventType === 'INSERT' && payload.new?.direction === 'INBOUND') {
+            const checks = {
+              initialLoadDone: initialLoadDoneRef.current,
+              notSelected: payload.new.conversation_id !== selectedIdRef.current,
+              hasWindow: typeof window !== 'undefined',
+              hasNotificationApi: typeof window !== 'undefined' && 'Notification' in window,
+              permission: typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'n/a',
+              visibility: typeof document !== 'undefined' ? document.visibilityState : 'n/a',
+            };
+            console.log('[Realtime] INBOUND notification checks:', checks);
+            if (
+              checks.initialLoadDone &&
+              checks.notSelected &&
+              checks.hasWindow &&
+              checks.hasNotificationApi &&
+              checks.permission === 'granted' &&
+              checks.visibility !== 'visible'
+            ) {
+              const conv = conversationsRef.current.find((c) => c.id === payload.new.conversation_id);
+              const title = conv?.contact_name ? `New message from ${conv.contact_name}` : 'New WhatsApp message';
+              console.log('[Realtime] firing browser notification:', title);
+              new Notification(title, { body: payload.new.content?.slice(0, 80) });
+            } else {
+              console.log('[Realtime] notification suppressed (a check above is false)');
+            }
           }
           fetchConversations();
         }
