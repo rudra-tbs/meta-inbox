@@ -18,7 +18,7 @@ interface InboxClientProps {
 }
 
 export default function InboxClient({ currentUser }: InboxClientProps) {
-  const [activeBrand] = useState<'TBS'>('TBS');
+  const [activeBrand] = useState<string>('TBS');
   const [activeChannel, setActiveChannel] = useState<ChannelView>('WA');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -336,7 +336,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-elevated">
-      <BrandRail activeBrand={activeBrand} />
+      <BrandRail activeBrand={activeBrand} currentUser={currentUser} />
 
       <div
         className={`flex flex-col border-r border-border-default bg-elevated
