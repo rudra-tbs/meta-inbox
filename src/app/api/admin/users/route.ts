@@ -5,6 +5,7 @@ import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
+import { logAdminEvent } from '@/lib/admin-events';
 
 async function requireAdmin() {
   const cookieStore = cookies();
@@ -55,6 +56,56 @@ export async function GET() {
     console.warn('[admin/users] listUsers failed (continuing without last_sign_in_at):', err);
   }
 
+  // Lightweight per-user metrics. Three counts, all bounded to one user:
+  //   - open_assigned: conversations currently assigned to them (status != CLOSED)
+  //   - replies_today: outbound HUMAN messages they sent since midnight UTC
+  //   - pushed_today: conversations they pushed to CRM since midnight UTC
+  // Avg response time is omitted — it requires window functions and matters
+  // less for a daily snapshot than these three.
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const startOfDayIso = startOfDay.toISOString();
+
+  const userIds = (rows ?? []).map((r) => r.id);
+  const metricsByUser = new Map<string, { open_assigned: number; replies_today: number; pushed_today: number }>();
+  for (const id of userIds) {
+    metricsByUser.set(id, { open_assigned: 0, replies_today: 0, pushed_today: 0 });
+  }
+
+  if (userIds.length > 0) {
+    const [openAssigned, repliesToday, pushedToday] = await Promise.all([
+      supabase
+        .from('conversations')
+        .select('assigned_to')
+        .in('assigned_to', userIds)
+        .neq('status', 'CLOSED'),
+      supabase
+        .from('messages')
+        .select('sender_user_id')
+        .in('sender_user_id', userIds)
+        .eq('sender', 'HUMAN')
+        .gte('created_at', startOfDayIso),
+      supabase
+        .from('conversations')
+        .select('pushed_by_user_id')
+        .in('pushed_by_user_id', userIds)
+        .gte('pushed_to_crm_at', startOfDayIso),
+    ]);
+
+    for (const row of openAssigned.data ?? []) {
+      const m = metricsByUser.get(row.assigned_to);
+      if (m) m.open_assigned++;
+    }
+    for (const row of repliesToday.data ?? []) {
+      const m = metricsByUser.get(row.sender_user_id);
+      if (m) m.replies_today++;
+    }
+    for (const row of pushedToday.data ?? []) {
+      const m = metricsByUser.get(row.pushed_by_user_id);
+      if (m) m.pushed_today++;
+    }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = (rows ?? []).map((r: any) => ({
     id: r.id,
@@ -65,6 +116,7 @@ export async function GET() {
     created_at: r.created_at,
     last_sign_in_at: r.auth_id ? lastSignInByAuthId.get(r.auth_id) ?? null : null,
     access: r.user_access ?? [],
+    metrics: metricsByUser.get(r.id) ?? { open_assigned: 0, replies_today: 0, pushed_today: 0 },
   }));
 
   return NextResponse.json(result);
@@ -182,6 +234,13 @@ export async function POST(request: NextRequest) {
       }
     }
   }
+
+  await logAdminEvent(supabase, admin, 'USER_INVITED', 'user', createdUser.id, {
+    target_name: name,
+    target_email: email,
+    role,
+    access_count: role === 'AGENT' ? access.length : 0,
+  });
 
   return NextResponse.json(
     { id: createdUser.id, email, name, role, invited: true },

@@ -8,20 +8,22 @@ import UsersTab from './tabs/UsersTab';
 import PipelinesTab from './tabs/PipelinesTab';
 import ChannelsTab from './tabs/ChannelsTab';
 import BrandContextsTab from './tabs/BrandContextsTab';
+import ActivityTab from './tabs/ActivityTab';
 import SystemTab from './tabs/SystemTab';
 
-type TabId = 'users' | 'pipelines' | 'channels' | 'contexts' | 'system';
+type TabId = 'users' | 'pipelines' | 'channels' | 'contexts' | 'activity' | 'system';
 
 interface AdminClientProps {
   currentUser: AppUser;
 }
 
 const TABS: Array<{ id: TabId; label: string; sub: string }> = [
-  { id: 'users',     label: 'Users',          sub: 'Roles, access, deactivation, invites' },
+  { id: 'users',     label: 'Users',          sub: 'Roles, access, deactivation, invites + per-agent metrics' },
   { id: 'channels',  label: 'Channels',       sub: 'Connect WhatsApp + Instagram, rotate tokens' },
   { id: 'pipelines', label: 'Pipelines',      sub: 'Brand → CRM pipeline mapping' },
   { id: 'contexts',  label: 'Brand contexts', sub: 'Per-brand AI system prompts' },
-  { id: 'system',    label: 'System',         sub: 'Env vars, DB connectivity, migrations' },
+  { id: 'activity',  label: 'Activity',       sub: 'Admin audit log — who changed what, when' },
+  { id: 'system',    label: 'System',         sub: 'Env vars, DB connectivity, migrations, recent send failures' },
 ];
 
 export default function AdminClient({ currentUser }: AdminClientProps) {
@@ -75,6 +77,7 @@ export default function AdminClient({ currentUser }: AdminClientProps) {
         {active === 'channels'  && <ChannelsTab />}
         {active === 'pipelines' && <PipelinesTab />}
         {active === 'contexts'  && <BrandContextsTab />}
+        {active === 'activity'  && <ActivityTab />}
         {active === 'system'    && <SystemTab />}
 
         <div className="mt-10 pt-6 border-t border-border-default">

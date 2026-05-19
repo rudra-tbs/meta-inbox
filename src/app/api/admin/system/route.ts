@@ -111,17 +111,48 @@ export async function GET() {
   // migration before the inbox starts misbehaving silently.
   const migrationChecks = await runMigrationChecks();
 
+  // Recent message send failures. Useful when an admin reports "messages
+  // aren't going out" — show them the actual error from Meta instead of
+  // making them dig through logs.
+  const recentFailures = await fetchRecentSendFailures();
+
   return NextResponse.json({
     env: envGroups,
     supabase: supabaseStatus,
     crm: crmStatus,
     migrations: migrationChecks,
+    recent_send_failures: recentFailures,
     runtime: {
       node: process.version,
       env: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'unknown',
       region: process.env.VERCEL_REGION ?? null,
     },
   });
+}
+
+interface RecentFailure {
+  id: string;
+  conversation_id: string;
+  content: string;
+  send_error: string | null;
+  sender: string;
+  created_at: string;
+}
+
+async function fetchRecentSendFailures(): Promise<RecentFailure[]> {
+  try {
+    const supabase = createServerClient();
+    const { data } = await supabase
+      .from('messages')
+      .select('id, conversation_id, content, send_error, sender, created_at')
+      .eq('delivered_status', 'FAILED')
+      .order('created_at', { ascending: false })
+      .limit(15);
+    return (data ?? []) as RecentFailure[];
+  } catch (err) {
+    console.warn('[admin/system] recent send failures probe failed:', err);
+    return [];
+  }
 }
 
 interface MigrationCheck {
@@ -234,6 +265,75 @@ async function runMigrationChecks(): Promise<MigrationCheck[]> {
     checks.push({
       key: 'col_users_active',
       label: 'users.active column (deactivation)',
+      ok: false,
+      detail: err instanceof Error ? err.message : 'probe failed',
+    });
+  }
+
+  // 5. ai_abstained column — controls the distinct "AI handed off" indicator.
+  try {
+    const { error } = await supabase
+      .from('conversations')
+      .select('ai_abstained', { count: 'exact', head: true });
+    const missing = !!error && /ai_abstained/i.test(error.message ?? '');
+    checks.push({
+      key: 'col_ai_abstained',
+      label: 'conversations.ai_abstained column',
+      ok: !error,
+      detail: missing
+        ? 'Missing — run migrations/2026_05_ai_abstained.sql'
+        : error?.message ?? null,
+    });
+  } catch (err) {
+    checks.push({
+      key: 'col_ai_abstained',
+      label: 'conversations.ai_abstained column',
+      ok: false,
+      detail: err instanceof Error ? err.message : 'probe failed',
+    });
+  }
+
+  // 6. admin_events table — drives the admin audit log.
+  try {
+    const { error } = await supabase
+      .from('admin_events')
+      .select('id', { count: 'exact', head: true });
+    const missing = !!error && /relation "?admin_events"? does not exist/i.test(error.message ?? '');
+    checks.push({
+      key: 'table_admin_events',
+      label: 'admin_events table (audit log)',
+      ok: !error,
+      detail: missing
+        ? 'Missing — run migrations/2026_05_admin_events.sql'
+        : error?.message ?? null,
+    });
+  } catch (err) {
+    checks.push({
+      key: 'table_admin_events',
+      label: 'admin_events table (audit log)',
+      ok: false,
+      detail: err instanceof Error ? err.message : 'probe failed',
+    });
+  }
+
+  // 7. brand_pipelines table — backs the brand→pipeline mapping UI.
+  try {
+    const { error } = await supabase
+      .from('brand_pipelines')
+      .select('brand', { count: 'exact', head: true });
+    const missing = !!error && /relation "?brand_pipelines"? does not exist/i.test(error.message ?? '');
+    checks.push({
+      key: 'table_brand_pipelines',
+      label: 'brand_pipelines table (admin pipeline mapping)',
+      ok: !error,
+      detail: missing
+        ? 'Missing — run migrations/2026_05_brand_pipelines.sql'
+        : error?.message ?? null,
+    });
+  } catch (err) {
+    checks.push({
+      key: 'table_brand_pipelines',
+      label: 'brand_pipelines table (admin pipeline mapping)',
       ok: false,
       detail: err instanceof Error ? err.message : 'probe failed',
     });

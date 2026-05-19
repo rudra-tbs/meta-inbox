@@ -5,6 +5,7 @@ import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
+import { logAdminEvent } from '@/lib/admin-events';
 
 async function requireAdmin() {
   const cookieStore = cookies();
@@ -67,6 +68,19 @@ export async function PUT(
       .insert(dedup.map((a) => ({ user_id: params.id, brand: a.brand, channel: a.channel })));
     if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
   }
+
+  const { data: target } = await supabase
+    .from('users')
+    .select('name, email')
+    .eq('id', params.id)
+    .single();
+
+  await logAdminEvent(supabase, admin, 'ACCESS_UPDATED', 'user', params.id, {
+    target_name: target?.name,
+    target_email: target?.email,
+    count: dedup.length,
+    access: dedup,
+  });
 
   return NextResponse.json({ ok: true, count: dedup.length });
 }

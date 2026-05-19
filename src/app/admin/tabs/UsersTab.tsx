@@ -12,6 +12,11 @@ interface AdminUser {
   created_at: string;
   last_sign_in_at: string | null;
   access: Array<{ brand: string; channel: string }>;
+  metrics: {
+    open_assigned: number;
+    replies_today: number;
+    pushed_today: number;
+  };
 }
 
 interface OnboardingState {
@@ -202,6 +207,13 @@ export default function UsersTab({ currentUserId }: UsersTabProps) {
                         <span>{u.access.length === 0 ? 'No access' : `${u.access.length} brand·channel`}</span>
                         <span>· Last seen {timeAgo(u.last_sign_in_at)}</span>
                       </div>
+                      {u.active && u.role !== 'ADMIN' && (
+                        <div className="text-[11px] text-text-secondary mt-1 flex flex-wrap gap-x-3" title="Today's activity (UTC) and current workload">
+                          <span><strong className="text-text-default tabular-nums">{u.metrics.open_assigned}</strong> open</span>
+                          <span><strong className="text-text-default tabular-nums">{u.metrics.replies_today}</strong> replies today</span>
+                          <span><strong className="text-text-default tabular-nums">{u.metrics.pushed_today}</strong> pushed today</span>
+                        </div>
+                      )}
                     </div>
 
                     <select
