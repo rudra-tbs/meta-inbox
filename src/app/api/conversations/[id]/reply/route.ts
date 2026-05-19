@@ -111,9 +111,10 @@ export async function POST(
       last_human_message_at: now,
       last_message_at: now,
       last_message_preview: trimmed.slice(0, 500),
-      // RM responded → clear any AI-flagged callback need.
+      // RM responded → clear any AI-flagged callback need + any prior AI bail.
       callback_required: false,
       needs_human_reply: false,
+      ai_abstained: false,
       suggested_reply: null,
       suggested_reply_at: null,
       unread_count: 0,

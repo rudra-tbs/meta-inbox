@@ -4,6 +4,7 @@ import { callLLM } from '@/lib/llm';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { findOrCreateContact, updateContactFromQualification } from '@/lib/contact-merge';
 import { getBrandSystemPrompt } from '@/lib/brand-contexts';
+import { logEvent } from '@/lib/activity';
 
 function stripThinkingBlocks(text: string): string {
   return text
@@ -116,7 +117,9 @@ export async function handleAIResponse(
 
   const rawAIResponse = stripThinkingBlocks(await callLLM(messages));
 
-  // ABSTAIN: silently hand off to human
+  // ABSTAIN: silently hand off to human. The ai_abstained flag is what
+  // lets the inbox show a distinct indicator — without it we can't tell
+  // an AI-bailout apart from a human-initiated mode toggle.
   if (rawAIResponse.trim() === 'ABSTAIN') {
     console.log(`[AI Handler] ABSTAIN for conversation ${conversation.id} — switching to HUMAN`);
     await supabase
@@ -125,12 +128,14 @@ export async function handleAIResponse(
         mode: 'HUMAN',
         needs_human_reply: true,
         manually_set_human: true,
+        ai_abstained: true,
         last_human_message_at: new Date().toISOString(),
         suggested_reply: null,
         suggested_reply_at: null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', conversation.id);
+    await logEvent(supabase, conversation.id, 'ABSTAIN', {});
     return;
   }
 
