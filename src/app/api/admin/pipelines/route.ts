@@ -17,7 +17,8 @@ interface StageRow {
   id: number;
   pipeline_id: number;
   name: string;
-  sort_order: number | null;
+  stage_order: number | null;
+  active_flag: number | null;
 }
 
 async function requireAdmin() {
@@ -53,20 +54,31 @@ export async function GET() {
     );
 
     const ids = pipelines.map((p) => p.id);
+    // Stages live in the `stages` table (legacy code/schema sometimes calls it
+    // pipeline_stages — that name doesn't exist in our CRM).
     let stages: StageRow[] = [];
+    let stagesError: string | null = null;
     if (ids.length > 0) {
       const placeholders = ids.map(() => '?').join(',');
-      stages = await queryCRM<StageRow[]>(
-        `SELECT id, pipeline_id, name, sort_order
-           FROM pipeline_stages
-          WHERE pipeline_id IN (${placeholders})
-          ORDER BY pipeline_id, sort_order, id`,
-        ids
-      );
+      try {
+        stages = await queryCRM<StageRow[]>(
+          `SELECT id, pipeline_id, name, stage_order, active_flag
+             FROM stages
+            WHERE pipeline_id IN (${placeholders})
+            ORDER BY pipeline_id, stage_order, id`,
+          ids
+        );
+      } catch (err) {
+        stagesError = err instanceof Error ? err.message : 'stages query failed';
+        console.warn('[admin/pipelines] stages query failed:', err);
+      }
     }
 
     const stagesByPipeline = new Map<number, StageRow[]>();
     for (const s of stages) {
+      // Some test fixtures store active_flag as a bit which serializes as a
+      // Buffer; treat anything truthy as active, drop only an explicit 0.
+      if (s.active_flag === 0) continue;
       const arr = stagesByPipeline.get(s.pipeline_id) ?? [];
       arr.push(s);
       stagesByPipeline.set(s.pipeline_id, arr);
@@ -80,9 +92,10 @@ export async function GET() {
         stages: (stagesByPipeline.get(p.id) ?? []).map((s) => ({
           id: s.id,
           name: s.name,
-          sort_order: s.sort_order,
+          sort_order: s.stage_order,
         })),
       })),
+      stagesError,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'CRM query failed';

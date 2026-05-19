@@ -201,7 +201,7 @@ export async function POST(
   let initialStageName: string | null = null;
   try {
     const stageRows = await queryCRM<{ name: string }[]>(
-      'SELECT name FROM pipeline_stages WHERE id = ? LIMIT 1',
+      'SELECT name FROM stages WHERE id = ? LIMIT 1',
       [stage_id]
     );
     initialStageName = stageRows[0]?.name ?? null;

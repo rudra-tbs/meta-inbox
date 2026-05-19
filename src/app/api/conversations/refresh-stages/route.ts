@@ -57,7 +57,7 @@ export async function POST() {
     stageRows = await queryCRM<DealStageRow[]>(
       `SELECT d.id, d.stage_id, s.name AS stage_name
        FROM deals d
-       LEFT JOIN pipeline_stages s ON s.id = d.stage_id
+       LEFT JOIN stages s ON s.id = d.stage_id
        WHERE d.id IN (${placeholders})`,
       dealIds
     );
