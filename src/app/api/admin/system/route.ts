@@ -15,8 +15,8 @@ const ENV_GROUPS: Array<{ group: string; keys: string[] }> = [
     keys: ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_VERIFY_TOKEN'],
   },
   {
-    group: 'OpenRouter / LLM',
-    keys: ['OPENROUTER_API_KEY', 'OPENROUTER_MODEL', 'OPENROUTER_FALLBACK_MODELS', 'GROQ_API_KEY', 'GROQ_MODEL'],
+    group: 'LLM (Groq)',
+    keys: ['GROQ_API_KEY', 'GROQ_MODEL', 'GROQ_FALLBACK_MODELS'],
   },
   {
     group: 'Supabase',

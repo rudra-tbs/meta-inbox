@@ -1,7 +1,7 @@
-// LLM wrapper. Despite the filename, this now calls Groq's OpenAI-compatible
-// chat-completions endpoint — Groq's free tier (14,400 req/day on Llama 3.3
-// 70B) gives us much more headroom than OpenRouter's :free shared cap.
-// Filename kept to avoid an import churn; rename later if we add a second provider.
+// LLM wrapper. Calls Groq's OpenAI-compatible chat-completions endpoint —
+// Groq's free tier (14,400 req/day on Llama 3.3 70B) gives us much more
+// headroom than OpenRouter's :free shared cap. If we add a second provider
+// later, branch inside this module rather than splitting into another file.
 
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
@@ -66,7 +66,7 @@ class GroqError extends Error {
 
 // Retry the call across the primary + fallback models when the primary
 // rate-limits, errors, times out, or 5xxs. Each model is tried at most once.
-export async function callOpenRouter(messages: ChatMessage[]): Promise<string> {
+export async function callLLM(messages: ChatMessage[]): Promise<string> {
   const primary = process.env.GROQ_MODEL || DEFAULT_MODEL;
   const fallbacks = (process.env.GROQ_FALLBACK_MODELS ?? '')
     .split(',')
