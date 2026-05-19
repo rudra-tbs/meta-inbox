@@ -5,6 +5,7 @@ import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
+import { logAdminEvent } from '@/lib/admin-events';
 
 async function requireAdmin() {
   const cookieStore = cookies();
@@ -56,6 +57,11 @@ export async function PUT(
     });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAdminEvent(supabase, admin, 'BRAND_CONTEXT_UPDATED', 'brand_context', params.brand, {
+    length: systemPrompt.length,
+  });
+
   return NextResponse.json({ ok: true });
 }
 
@@ -73,5 +79,8 @@ export async function DELETE(
     .eq('brand', params.brand);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAdminEvent(supabase, admin, 'BRAND_CONTEXT_DELETED', 'brand_context', params.brand, {});
+
   return NextResponse.json({ ok: true });
 }
