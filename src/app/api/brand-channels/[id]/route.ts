@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
 import { fetchWhatsAppNumberInfo } from '@/lib/whatsapp';
+import { logAdminEvent } from '@/lib/admin-events';
 
 async function requireAdmin() {
   const cookieStore = cookies();
@@ -47,7 +48,7 @@ export async function PATCH(
   const supabase = createServerClient();
   const { data: existing, error: lookupErr } = await supabase
     .from('brand_channels')
-    .select('channel, external_account_id, access_token')
+    .select('brand, channel, external_account_id, access_token')
     .eq('id', params.id)
     .single();
   if (lookupErr || !existing) {
@@ -86,6 +87,12 @@ export async function PATCH(
   const { error } = await supabase.from('brand_channels').update(updates).eq('id', params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  await logAdminEvent(supabase, admin, 'CHANNEL_UPDATED', 'channel', params.id, {
+    brand: existing.brand,
+    channel: existing.channel,
+    changed: Object.keys(updates).filter((k) => k !== 'updated_at'),
+  });
+
   return NextResponse.json({ ok: true });
 }
 
@@ -97,8 +104,20 @@ export async function DELETE(
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const supabase = createServerClient();
+  const { data: prev } = await supabase
+    .from('brand_channels')
+    .select('brand, channel, display_name')
+    .eq('id', params.id)
+    .single();
+
   const { error } = await supabase.from('brand_channels').delete().eq('id', params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAdminEvent(supabase, admin, 'CHANNEL_DISCONNECTED', 'channel', params.id, {
+    brand: prev?.brand,
+    channel: prev?.channel,
+    display_name: prev?.display_name,
+  });
 
   return NextResponse.json({ ok: true });
 }

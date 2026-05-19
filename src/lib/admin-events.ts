@@ -14,9 +14,17 @@ export type AdminEventType =
   | 'PIPELINE_MAPPED'
   | 'PIPELINE_UNMAPPED'
   | 'BRAND_CONTEXT_UPDATED'
-  | 'BRAND_CONTEXT_DELETED';
+  | 'BRAND_CONTEXT_DELETED'
+  | 'TEMPLATE_CREATED'
+  | 'TEMPLATE_UPDATED'
+  | 'TEMPLATE_DELETED';
 
-export type AdminTargetKind = 'user' | 'channel' | 'brand_pipeline' | 'brand_context';
+export type AdminTargetKind =
+  | 'user'
+  | 'channel'
+  | 'brand_pipeline'
+  | 'brand_context'
+  | 'reply_template';
 
 // Best-effort: never throws, never blocks the actual admin action. If logging
 // fails (e.g. table missing in a stale dev project) we log to stderr and move

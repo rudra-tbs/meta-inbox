@@ -5,6 +5,7 @@ import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
+import { logAdminEvent } from '@/lib/admin-events';
 
 async function requireAdmin() {
   const cookieStore = cookies();
@@ -100,6 +101,11 @@ export async function PUT(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  await logAdminEvent(supabase, admin, 'PIPELINE_MAPPED', 'brand_pipeline', brand, {
+    pipeline_id: pipelineId,
+    initial_stage_id: stageId,
+  });
+
   return NextResponse.json({ ok: true });
 }
 
@@ -116,6 +122,8 @@ export async function DELETE(request: NextRequest) {
   const supabase = createServerClient();
   const { error } = await supabase.from('brand_pipelines').delete().eq('brand', brand);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAdminEvent(supabase, admin, 'PIPELINE_UNMAPPED', 'brand_pipeline', brand, {});
 
   return NextResponse.json({ ok: true });
 }

@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
 import { fetchWhatsAppNumberInfo } from '@/lib/whatsapp';
+import { logAdminEvent } from '@/lib/admin-events';
 import type { Channel } from '@/types';
 
 export async function POST(request: NextRequest) {
@@ -81,17 +82,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { error: insertError } = await supabase.from('brand_channels').insert({
-    brand,
-    channel,
-    external_account_id: externalAccountId,
-    access_token: accessToken,
-    display_name: displayName,
-    configured_by_user_id: appUser.id,
-  });
+  const { data: inserted, error: insertError } = await supabase
+    .from('brand_channels')
+    .insert({
+      brand,
+      channel,
+      external_account_id: externalAccountId,
+      access_token: accessToken,
+      display_name: displayName,
+      configured_by_user_id: appUser.id,
+    })
+    .select('id')
+    .single();
 
   if (insertError) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
+  }
+
+  // Audit log only fires when an admin connects a channel during normal ops.
+  // We still record it on agent-driven signup connects so the audit is honest.
+  if (inserted?.id) {
+    await logAdminEvent(supabase, appUser, 'CHANNEL_CONNECTED', 'channel', inserted.id, {
+      brand,
+      channel,
+      external_account_id: externalAccountId,
+      display_name: displayName,
+    });
   }
 
   return NextResponse.json({ brand, channel, display_name: displayName }, { status: 201 });

@@ -34,6 +34,9 @@ const EVENT_LABELS: Record<string, string> = {
   PIPELINE_UNMAPPED: 'Cleared pipeline mapping',
   BRAND_CONTEXT_UPDATED: 'Updated brand context',
   BRAND_CONTEXT_DELETED: 'Removed brand context',
+  TEMPLATE_CREATED: 'Created template',
+  TEMPLATE_UPDATED: 'Updated template',
+  TEMPLATE_DELETED: 'Deleted template',
 };
 
 const TARGET_TONE: Record<string, string> = {
@@ -41,6 +44,7 @@ const TARGET_TONE: Record<string, string> = {
   channel: 'bg-success-soft text-success border-success/20',
   brand_pipeline: 'bg-warning-soft text-warning border-warning/20',
   brand_context: 'bg-canvas text-text-secondary border-border-default',
+  reply_template: 'bg-canvas text-text-default border-border-default',
 };
 
 function timeAgo(iso: string): string {
@@ -72,6 +76,24 @@ function describe(event: AdminEvent): string {
       return `${target} · ${m.from} → ${m.to}`;
     case 'ACCESS_UPDATED':
       return `${target} · ${m.count} brand·channel${m.count === 1 ? '' : 's'}`;
+    case 'CHANNEL_CONNECTED':
+      return `${m.brand} · ${m.channel}${m.display_name ? ` (${m.display_name})` : ''}`;
+    case 'CHANNEL_UPDATED':
+      return `${m.brand} · ${m.channel} · ${(m.changed ?? []).join(', ')}`;
+    case 'CHANNEL_DISCONNECTED':
+      return `${m.brand} · ${m.channel}${m.display_name ? ` (${m.display_name})` : ''}`;
+    case 'PIPELINE_MAPPED':
+      return `pipeline #${m.pipeline_id} · initial stage #${m.initial_stage_id}`;
+    case 'PIPELINE_UNMAPPED':
+      return '—';
+    case 'BRAND_CONTEXT_UPDATED':
+      return `${m.length ?? 0} chars`;
+    case 'BRAND_CONTEXT_DELETED':
+      return '—';
+    case 'TEMPLATE_CREATED':
+    case 'TEMPLATE_UPDATED':
+    case 'TEMPLATE_DELETED':
+      return `${m.brand}${m.name ? ` · ${m.name}` : ''}${m.shortcut ? ` (/${m.shortcut})` : ''}`;
     default:
       return target;
   }
@@ -125,6 +147,7 @@ export default function ActivityTab() {
           <option value="channel">Channels</option>
           <option value="brand_pipeline">Pipelines</option>
           <option value="brand_context">Brand contexts</option>
+          <option value="reply_template">Templates</option>
         </select>
       </div>
 
