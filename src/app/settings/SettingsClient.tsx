@@ -6,11 +6,8 @@ import type { AppUser } from '@/types';
 import Button from '@/components/ui/Button';
 import ProfileTab from './tabs/ProfileTab';
 import ChannelsTab from './tabs/ChannelsTab';
-import UsersTab from './tabs/UsersTab';
-import AdminChannelsTab from './tabs/AdminChannelsTab';
-import BrandContextsTab from './tabs/BrandContextsTab';
 
-type TabId = 'profile' | 'channels' | 'users' | 'admin-channels' | 'brand-contexts';
+type TabId = 'profile' | 'channels';
 
 interface SettingsClientProps {
   currentUser: AppUser;
@@ -24,6 +21,9 @@ interface Me {
   access: Array<{ brand: string; channel: string }>;
 }
 
+// Settings is intentionally self-service only. Anything that affects other
+// users or system-wide config (user management, channel credentials, brand
+// pipelines, AI prompts) lives under /admin instead — admins go there.
 export default function SettingsClient({ currentUser }: SettingsClientProps) {
   const router = useRouter();
   const [active, setActive] = useState<TabId>('profile');
@@ -46,13 +46,6 @@ export default function SettingsClient({ currentUser }: SettingsClientProps) {
   const tabs: Array<{ id: TabId; label: string }> = [
     { id: 'profile', label: 'Profile' },
     { id: 'channels', label: 'My channels' },
-    ...(isAdmin
-      ? ([
-          { id: 'users', label: 'Users' },
-          { id: 'admin-channels', label: 'All channels' },
-          { id: 'brand-contexts', label: 'Brand contexts' },
-        ] as Array<{ id: TabId; label: string }>)
-      : []),
   ];
 
   return (
@@ -69,9 +62,19 @@ export default function SettingsClient({ currentUser }: SettingsClientProps) {
             </button>
             <span className="text-sm font-semibold text-text-primary">Settings</span>
           </div>
-          <span className="text-[11px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-muted text-text-secondary">
-            {currentUser.role}
-          </span>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button
+                onClick={() => router.push('/admin')}
+                className="text-[11px] text-brand font-medium hover:underline"
+              >
+                Admin panel →
+              </button>
+            )}
+            <span className="text-[11px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-muted text-text-secondary">
+              {currentUser.role}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -97,9 +100,6 @@ export default function SettingsClient({ currentUser }: SettingsClientProps) {
           <>
             {active === 'profile' && <ProfileTab me={me} onSaved={loadMe} />}
             {active === 'channels' && <ChannelsTab me={me} onChanged={loadMe} />}
-            {active === 'users' && isAdmin && <UsersTab currentUserId={me.id} />}
-            {active === 'admin-channels' && isAdmin && <AdminChannelsTab />}
-            {active === 'brand-contexts' && isAdmin && <BrandContextsTab />}
           </>
         )}
 
