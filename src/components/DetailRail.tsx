@@ -51,12 +51,25 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
   );
 }
 
+interface TaxonomyEntry { name: string; display_name: string; color: string | null }
+
 export default function DetailRail({ conversation, open, onClose, onConversationUpdate }: DetailRailProps) {
   const [notesDraft, setNotesDraft] = useState(conversation.contact_notes ?? '');
   const [savingNotes, setSavingNotes] = useState(false);
   const [tagInput, setTagInput] = useState('');
+  const [taxonomy, setTaxonomy] = useState<TaxonomyEntry[]>([]);
   const [events, setEvents] = useState<ConversationEvent[]>([]);
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load tag taxonomy once when the rail opens. Cheap query (~tens of rows
+  // max in a normal team) so we don't bother caching across rails.
+  useEffect(() => {
+    if (!open) return;
+    fetch('/api/tags')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: TaxonomyEntry[]) => setTaxonomy(data))
+      .catch(() => {});
+  }, [open]);
 
   useEffect(() => {
     setNotesDraft(conversation.contact_notes ?? '');
@@ -98,8 +111,10 @@ export default function DetailRail({ conversation, open, onClose, onConversation
     onConversationUpdate({ ...conversation, tags });
   }
 
-  function addTag() {
-    const t = tagInput.trim();
+  function addTag(rawValue?: string) {
+    // Normalize identically to the API so the optimistic UI matches what gets
+    // persisted (#VIP / #vip / #Vip → "vip").
+    const t = (rawValue ?? tagInput).trim().toLowerCase().replace(/^#/, '');
     if (!t) return;
     const current = conversation.tags ?? [];
     if (current.includes(t)) { setTagInput(''); return; }
@@ -116,7 +131,24 @@ export default function DetailRail({ conversation, open, onClose, onConversation
   const siblings = conversation.sibling_conversations ?? [];
 
   return (
-    <aside className="w-80 border-l border-border-default bg-elevated overflow-y-auto flex-shrink-0">
+    <>
+      {/* Backdrop — only visible on mobile, lets users tap-to-close. md:hidden
+          keeps the desktop layout unchanged. */}
+      <div
+        onClick={onClose}
+        aria-hidden
+        className="md:hidden fixed inset-0 bg-black/50 z-40"
+      />
+
+      <aside
+        role="dialog"
+        aria-label="Conversation details"
+        className="
+          fixed inset-y-0 right-0 z-50 w-[85vw] max-w-sm shadow-2xl
+          md:static md:w-80 md:max-w-none md:shadow-none md:z-auto
+          border-l border-border-default bg-elevated overflow-y-auto flex-shrink-0
+        "
+      >
       <div className="sticky top-0 bg-elevated/95 backdrop-blur px-5 py-3 border-b border-border-default flex items-center justify-between z-10">
         <h2 className="text-sm font-semibold text-text-primary">Details</h2>
         <button
@@ -161,20 +193,44 @@ export default function DetailRail({ conversation, open, onClose, onConversation
       {/* Tags */}
       <Section title="Tags">
         <div className="flex flex-wrap gap-1.5 items-center">
-          {(conversation.tags ?? []).map((t) => (
-            <span key={t} className="inline-flex items-center gap-1 text-[11px] text-text-default bg-canvas border border-border-default rounded px-1.5 py-0.5">
-              {t}
-              <button onClick={() => removeTag(t)} className="text-text-muted hover:text-danger leading-none">×</button>
-            </span>
-          ))}
+          {(conversation.tags ?? []).map((t) => {
+            const entry = taxonomy.find((x) => x.name === t);
+            const display = entry?.display_name ?? t;
+            const color = entry?.color ?? null;
+            return (
+              <span
+                key={t}
+                style={color ? { backgroundColor: `${color}22`, borderColor: `${color}55`, color } : undefined}
+                className={`inline-flex items-center gap-1 text-[11px] rounded px-1.5 py-0.5 border ${color ? '' : 'text-text-default bg-canvas border-border-default'}`}
+                title={t === display ? undefined : `Canonical: ${t}`}
+              >
+                {display}
+                <button onClick={() => removeTag(t)} className="opacity-70 hover:opacity-100 leading-none">×</button>
+              </span>
+            );
+          })}
           <input
             value={tagInput}
             onChange={(e) => setTagInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+            list={`tag-taxonomy-${conversation.id}`}
             placeholder="+ add"
-            className="text-[11px] px-1.5 py-0.5 border-0 outline-none w-16 bg-transparent text-text-default placeholder:text-text-muted"
+            className="text-[11px] px-1.5 py-0.5 border-0 outline-none w-24 bg-transparent text-text-default placeholder:text-text-muted"
           />
+          {/* Native datalist gives us autocomplete + free-typing in one input
+              without pulling in a dropdown library. Agents can pick from the
+              taxonomy or type anything; the API normalizes on save. */}
+          <datalist id={`tag-taxonomy-${conversation.id}`}>
+            {taxonomy.map((t) => (
+              <option key={t.name} value={t.display_name} />
+            ))}
+          </datalist>
         </div>
+        {taxonomy.length === 0 && (
+          <p className="text-[10px] text-text-muted mt-1.5">
+            No tags defined yet. Admins can set up the master list in /admin → Tags.
+          </p>
+        )}
       </Section>
 
       {/* Other channels */}
@@ -216,6 +272,7 @@ export default function DetailRail({ conversation, open, onClose, onConversation
           </ol>
         )}
       </Section>
-    </aside>
+      </aside>
+    </>
   );
 }

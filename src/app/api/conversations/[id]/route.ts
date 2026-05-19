@@ -103,6 +103,16 @@ export async function PATCH(
     if (field in body) updates[field] = body[field as PatchableField];
   }
 
+  // Normalize tags to the canonical lowercased name so #VIP / #vip / #Vip
+  // collapse to the same value. De-dupe in case the client passes both casings.
+  if ('tags' in body) {
+    const raw = Array.isArray(body.tags) ? (body.tags as unknown[]) : [];
+    const normalized = raw
+      .map((t) => (typeof t === 'string' ? t.trim().toLowerCase().replace(/^#/, '') : ''))
+      .filter((t) => t.length > 0);
+    updates.tags = Array.from(new Set(normalized));
+  }
+
   if (Object.keys(updates).length === 1) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
   }
