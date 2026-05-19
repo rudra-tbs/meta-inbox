@@ -5,6 +5,7 @@ import type { StatusFilter } from '@/app/inbox/InboxClient';
 import ConversationItem from './ConversationItem';
 import FilterPills from './FilterPills';
 import StatsBar from './StatsBar';
+import BulkActionBar from './BulkActionBar';
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -16,6 +17,11 @@ interface ConversationListProps {
   setSearch: (s: string) => void;
   currentUserId: string;
   loading?: boolean;
+  // Bulk selection
+  checkedIds: Set<string>;
+  onToggleCheck: (id: string) => void;
+  onClearChecks: () => void;
+  onBulkDone: () => void;
 }
 
 export default function ConversationList({
@@ -27,7 +33,13 @@ export default function ConversationList({
   search,
   setSearch,
   loading,
+  checkedIds,
+  onToggleCheck,
+  onClearChecks,
+  onBulkDone,
 }: ConversationListProps) {
+  const selectionActive = checkedIds.size > 0;
+  const checkedConversations = conversations.filter((c) => checkedIds.has(c.id));
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       {/* Search */}
@@ -82,13 +94,24 @@ export default function ConversationList({
               conversation={conv}
               selected={conv.id === selectedId}
               onClick={() => onSelect(conv.id)}
+              selectionActive={selectionActive}
+              checked={checkedIds.has(conv.id)}
+              onToggleCheck={() => onToggleCheck(conv.id)}
             />
           ))
         )}
       </div>
 
-      {/* Stats bar */}
-      <StatsBar conversations={conversations} />
+      {/* Bulk action bar replaces the stats bar whenever something's selected. */}
+      {selectionActive ? (
+        <BulkActionBar
+          selectedConversations={checkedConversations}
+          onClear={onClearChecks}
+          onDone={onBulkDone}
+        />
+      ) : (
+        <StatsBar conversations={conversations} />
+      )}
     </div>
   );
 }

@@ -25,7 +25,10 @@ export default function AssignDropdown({ conversation, onAssign }: AssignDropdow
   }, []);
 
   async function loadUsers() {
-    if (users.length > 0) return;
+    // Refetch on every open — a freshly-invited agent should appear in the
+    // dropdown without forcing the admin to refresh the inbox. Server-side
+    // cache headers on /api/users keep this cheap.
+    //
     // Only list users who can actually see this conversation. Prevents an
     // agent from accidentally orphaning a thread by assigning it to someone
     // without brand+channel access.

@@ -87,6 +87,7 @@ export interface Conversation {
   needs_human_reply: boolean;
   callback_required: boolean;
   manually_set_human: boolean;
+  ai_abstained: boolean;
   instagram_id: string | null;
   pushed_to_crm: boolean;
   crm_deal_id: number | null;

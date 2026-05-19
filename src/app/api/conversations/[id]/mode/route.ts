@@ -56,6 +56,9 @@ export async function POST(
 
   const updates: Record<string, unknown> = {
     mode,
+    // Either direction implies a human took ownership of the flow, so clear
+    // the AI-bail indicator. It'll only reappear if the AI bails again.
+    ai_abstained: false,
     updated_at: new Date().toISOString(),
   };
 

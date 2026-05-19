@@ -44,6 +44,9 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Bulk selection — IDs of conversations the user has checked. Independent
+  // of `selectedId` (which is the currently-open chat).
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
 
   const conversationsRef = useRef<Conversation[]>([]);
   conversationsRef.current = conversations;
@@ -198,10 +201,39 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
     setActiveBrand(brandId);
     setSelectedId(null);
     setAssigneeFilter('');
+    setCheckedIds(new Set());
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(ACTIVE_BRAND_STORAGE_KEY, brandId);
     }
   }
+
+  // Toggle a conversation in the bulk-select set. Memo-light: a new Set per
+  // change so React re-renders.
+  function toggleCheck(id: string) {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Prune checked IDs that fell out of the current list (filter change,
+  // realtime delete, brand switch). Keeps the bulk-action bar's count
+  // consistent with what the user can see.
+  useEffect(() => {
+    setCheckedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(conversations.map((c) => c.id));
+      const next = new Set<string>();
+      let changed = false;
+      prev.forEach((id) => {
+        if (visible.has(id)) next.add(id);
+        else changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [conversations]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
   useEffect(() => { fetchStages(); }, [fetchStages]);
@@ -473,6 +505,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
             onChange={(c) => {
               setActiveChannel(c);
               setSelectedId(null);
+              setCheckedIds(new Set());
             }}
           />
         </div>
@@ -536,6 +569,10 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
           setSearch={setSearch}
           currentUserId={currentUser.id}
           loading={loadingConvs}
+          checkedIds={checkedIds}
+          onToggleCheck={toggleCheck}
+          onClearChecks={() => setCheckedIds(new Set())}
+          onBulkDone={() => { fetchConversations(); }}
         />
       </div>
 

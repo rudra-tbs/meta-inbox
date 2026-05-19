@@ -76,6 +76,28 @@ export default function ChatWindow({
   const [isDesktop, setIsDesktop] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const snoozeWrapperRef = useRef<HTMLDivElement>(null);
+
+  // Close snooze menu on outside click / escape. The popover used to require
+  // a selection or a second click on its trigger; now it behaves like every
+  // other dropdown in the app.
+  useEffect(() => {
+    if (!showSnoozeMenu) return;
+    function onDown(e: MouseEvent) {
+      if (snoozeWrapperRef.current && !snoozeWrapperRef.current.contains(e.target as Node)) {
+        setShowSnoozeMenu(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setShowSnoozeMenu(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [showSnoozeMenu]);
 
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 768px)');
@@ -226,7 +248,7 @@ export default function ChatWindow({
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <ModeToggle conversation={conversation} onToggle={onModeChange} />
           <AssignDropdown conversation={conversation} onAssign={onAssign} />
-          <div className="relative">
+          <div className="relative" ref={snoozeWrapperRef}>
             <Button
               variant="icon"
               onClick={() => setShowSnoozeMenu((v) => !v)}

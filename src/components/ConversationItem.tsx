@@ -7,6 +7,12 @@ interface ConversationItemProps {
   conversation: Conversation;
   selected: boolean;
   onClick: () => void;
+  // Bulk-select props. `selectionActive` makes the checkbox always visible
+  // (otherwise it's hover-only). `checked` controls the checkbox itself.
+  // `onToggleCheck` fires when the user clicks the checkbox.
+  selectionActive?: boolean;
+  checked?: boolean;
+  onToggleCheck?: () => void;
 }
 
 const AVATAR_COLORS = [
@@ -44,6 +50,9 @@ export default function ConversationItem({
   conversation,
   selected,
   onClick,
+  selectionActive = false,
+  checked = false,
+  onToggleCheck,
 }: ConversationItemProps) {
   const displayName = conversation.contact_name || `+${conversation.phone_number}`;
   const colorClass = getAvatarColor(conversation.phone_number);
@@ -53,24 +62,76 @@ export default function ConversationItem({
   const unread = conversation.unread_count ?? 0;
   const hasUnread = unread > 0 && !selected;
 
-  // Single priority indicator — most urgent wins
-  const indicator: { tone: 'warning' | 'danger' | 'snooze' | null; label: string } =
+  // Priority indicator — most urgent wins. AI ABSTAIN now has its own slot
+  // (the AI explicitly bailed and needs human attention), distinct from a
+  // lead simply waiting on a reply.
+  const indicator: { tone: 'warning' | 'danger' | 'snooze' | 'abstain' | null; label: string } =
     conversation.suggested_reply && conversation.mode === 'HUMAN' ? { tone: 'warning', label: 'Reply ready' }
     : conversation.callback_required ? { tone: 'danger', label: 'Call required' }
+    : conversation.ai_abstained ? { tone: 'abstain', label: 'AI handed off — needs you' }
     : conversation.needs_human_reply ? { tone: 'warning', label: 'Awaiting reply' }
     : isSnoozed ? { tone: 'snooze', label: 'Snoozed' }
     : { tone: null, label: '' };
 
+  // Render the indicator dot. ABSTAIN gets a custom rendering (a small AI bail
+  // glyph in danger tone) since Dot doesn't take that tone enum value.
+  function renderIndicator() {
+    if (!indicator.tone) return null;
+    if (indicator.tone === 'abstain') {
+      return (
+        <span
+          title={indicator.label}
+          className="absolute -bottom-0.5 -right-0.5 ring-2 ring-elevated rounded-full w-4 h-4 bg-danger-soft text-danger text-[9px] font-bold flex items-center justify-center"
+        >
+          !
+        </span>
+      );
+    }
+    return (
+      <span className="absolute -bottom-0.5 -right-0.5 ring-2 ring-elevated rounded-full" title={indicator.label}>
+        <Dot tone={indicator.tone} pulse={indicator.tone === 'warning' || indicator.tone === 'danger'} />
+      </span>
+    );
+  }
+
   return (
-    <button
+    <div
       onClick={onClick}
-      className={`group w-full text-left px-4 py-2.5 flex gap-3 transition-colors
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className={`group w-full text-left px-4 py-2.5 flex gap-2 items-start transition-colors cursor-pointer
         ${selected
           ? 'bg-brand-soft'
           : hasUnread
             ? 'bg-success-soft/40 hover:bg-success-soft/60'
             : 'hover:bg-canvas'}`}
     >
+      {/* Bulk-select checkbox. Hidden by default; shows on hover, or stays
+          visible whenever any conversation is selected so the user can
+          uncheck without hunting. */}
+      {onToggleCheck && (
+        <label
+          onClick={(e) => { e.stopPropagation(); onToggleCheck(); }}
+          className={`flex-shrink-0 mt-2 w-4 h-4 transition-opacity
+            ${selectionActive || checked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+        >
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={onToggleCheck}
+            onClick={(e) => e.stopPropagation()}
+            className="w-4 h-4 rounded border-border-default text-brand focus:ring-brand/20 cursor-pointer"
+            aria-label={`Select ${displayName}`}
+          />
+        </label>
+      )}
+
       {/* Avatar */}
       <div className="relative flex-shrink-0">
         <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-[11px] font-medium ${colorClass}`}>
@@ -81,10 +142,8 @@ export default function ConversationItem({
             className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-success ring-2 ring-elevated"
             title={`${unread} unread`}
           />
-        ) : indicator.tone && (
-          <span className="absolute -bottom-0.5 -right-0.5 ring-2 ring-elevated rounded-full">
-            <Dot tone={indicator.tone} pulse={indicator.tone === 'warning' || indicator.tone === 'danger'} />
-          </span>
+        ) : (
+          renderIndicator()
         )}
       </div>
 
@@ -134,6 +193,6 @@ export default function ConversationItem({
           </div>
         )}
       </div>
-    </button>
+    </div>
   );
 }
