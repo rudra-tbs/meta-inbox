@@ -25,7 +25,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   const isAdmin = currentUser.role === 'ADMIN';
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loadingBrands, setLoadingBrands] = useState(true);
-  const [activeBrand, setActiveBrand] = useState<string>('TBS');
+  const [activeBrand, setActiveBrand] = useState<string>('');
   const [activeChannel, setActiveChannel] = useState<ChannelView>('WA');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -76,6 +76,11 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   }, [conversations, isAllChannels]);
 
   const fetchConversations = useCallback(async () => {
+    if (!activeBrand) {
+      setConversations([]);
+      setLoadingConvs(false);
+      return;
+    }
     const params = new URLSearchParams({
       brand: activeBrand,
       channel: activeChannel,
@@ -123,6 +128,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   }, [search]);
 
   const fetchStages = useCallback(async () => {
+    if (!activeBrand) { setStages([]); return; }
     const res = await fetch(`/api/crm-stages?brand=${activeBrand}&channel=${activeChannel === 'ALL' ? 'WA' : activeChannel}`);
     if (res.ok) setStages(await res.json());
   }, [activeBrand, activeChannel]);

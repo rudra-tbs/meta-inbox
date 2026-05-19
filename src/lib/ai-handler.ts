@@ -143,7 +143,7 @@ export async function handleAIResponse(
 
   const qualMatch =
     rawAIResponse.match(/<qualification_data>([\s\S]*?)<\/qualification_data>/) ??
-    rawAIResponse.match(/(\{[\s\S]*"brand"[\s\S]*\})/);
+    rawAIResponse.match(/(\{[\s\S]*"is_qualified"[\s\S]*\})/);
   const qualJson = qualMatch ? qualMatch[1].trim() : null;
 
   let qualData: QualificationData | null = null;

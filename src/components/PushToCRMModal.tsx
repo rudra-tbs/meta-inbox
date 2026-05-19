@@ -36,15 +36,6 @@ function parseWeddingDate(raw: string | null): string {
   return '';
 }
 
-function mapServiceTypeToDropdown(st: string | null): string {
-  if (!st) return '';
-  const lower = st.toLowerCase();
-  if (lower.includes('planning') && lower.includes('decor')) return 'planning+decor';
-  if (lower.includes('decor')) return 'decor-only';
-  if (lower.includes('planning') || lower.includes('full') || lower.includes('end')) return 'planning-only';
-  return '';
-}
-
 function lastAIMessages(messages: Message[], count = 5): string {
   return messages
     .filter((m) => m.sender === 'AI')
@@ -68,7 +59,6 @@ export default function PushToCRMModal({
   const [weddingDate, setWeddingDate] = useState(parseWeddingDate(conversation.wedding_date));
   const [guestCount, setGuestCount] = useState(conversation.guest_count ?? '');
   const [budget, setBudget] = useState(parseBudget(conversation.budget_range));
-  const [serviceType, setServiceType] = useState(mapServiceTypeToDropdown(conversation.service_type));
   const [assignToCRMUserId, setAssignToCRMUserId] = useState<string>('');
   const [notes, setNotes] = useState(lastAIMessages(messages));
 
@@ -107,7 +97,7 @@ export default function PushToCRMModal({
           wedding_date: weddingDate || null,
           guest_count: guestCount.trim() || null,
           budget: budget ? Number(budget) : null,
-          service_type: (serviceType as 'planning-only' | 'decor-only' | 'planning+decor') || null,
+          service_type: conversation.service_type ?? null,
           assign_to_crm_user_id: assignToCRMUserId ? Number(assignToCRMUserId) : null,
           notes: notes.trim() || null,
         }),
@@ -211,21 +201,6 @@ export default function PushToCRMModal({
               placeholder="e.g. 15"
               min={0}
             />
-          </div>
-
-          {/* Service type */}
-          <div>
-            <label className="block text-[11px] font-medium text-text-secondary mb-1">Service type</label>
-            <select
-              value={serviceType}
-              onChange={(e) => setServiceType(e.target.value)}
-              className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default placeholder:text-text-muted focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
-            >
-              <option value="">— Select —</option>
-              <option value="planning-only">Planning only</option>
-              <option value="decor-only">Decor only</option>
-              <option value="planning+decor">Planning + Decor</option>
-            </select>
           </div>
 
           {/* Assign to */}

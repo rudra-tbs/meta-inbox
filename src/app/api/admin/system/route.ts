@@ -28,7 +28,7 @@ const ENV_GROUPS: Array<{ group: string; keys: string[] }> = [
   },
   {
     group: 'CRM pipeline routing',
-    keys: ['CRM_DEFAULT_INITIAL_STAGE_ID', 'CRM_PIPELINE_TBS_ID', 'CRM_PIPELINE_TBS_INITIAL_STAGE_ID'],
+    keys: ['CRM_DEFAULT_INITIAL_STAGE_ID'],
   },
   {
     group: 'App',

@@ -14,21 +14,12 @@ interface PushBody {
   wedding_date: string | null;
   guest_count: string | null;
   budget: number | null;
-  service_type: 'planning-only' | 'decor-only' | 'planning+decor' | null;
+  service_type: string | null;
   assign_to_crm_user_id: number | null;
   notes: string | null;
 }
 
 interface CRMUserRow { id: number; first_name: string; last_name: string; }
-
-function mapServiceType(st: string | null) {
-  switch (st) {
-    case 'planning-only':  return { tbs_service_type: 'PLANNING', planning: 1, decor: 0 };
-    case 'decor-only':     return { tbs_service_type: 'DECOR',    planning: 0, decor: 1 };
-    case 'planning+decor': return { tbs_service_type: 'PLANNING', planning: 1, decor: 1 };
-    default:               return { tbs_service_type: null,        planning: 0, decor: 0 };
-  }
-}
 
 export async function POST(
   request: NextRequest,
@@ -96,9 +87,10 @@ export async function POST(
   // Lookup order:
   //   1. brand_pipelines table (admin-editable from /admin → Pipelines).
   //   2. CRM_PIPELINE_<BRAND>_ID + CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID env
-  //      vars (BRAND uppercased, e.g. CRM_PIPELINE_TBS_ID=67) — legacy.
-  //   3. If the brand string is numeric (post brands_from_pipelines migration),
-  //      use it as the pipeline_id and require CRM_DEFAULT_INITIAL_STAGE_ID.
+  //      vars (BRAND uppercased) — per-deployment override.
+  //   3. If the brand string is numeric (the canonical case post
+  //      brands_from_pipelines migration), use it as the pipeline_id and
+  //      require CRM_DEFAULT_INITIAL_STAGE_ID for the initial stage.
   const brandKey = String(conv.brand).toUpperCase();
 
   let pipeline_id: number | null = null;
@@ -140,9 +132,6 @@ export async function POST(
   // Sub-source by channel
   const deal_sub_source = conv.channel === 'IG' ? 'INSTAGRAM' : 'WHATSAPP';
 
-  // Service type mapping
-  const { tbs_service_type, planning, decor } = mapServiceType(body.service_type);
-
   // phone_num: strip leading country code if 91XXXXXXXXXX (12 digits → last 10)
   const rawPhone = conv.phone_number as string;
   const phone_num = rawPhone.length === 12 && rawPhone.startsWith('91')
@@ -177,17 +166,19 @@ export async function POST(
   );
   const person_id = personIdRows[0]?.id ?? null;
 
-  // 2. Insert deal
+  // 2. Insert deal — only generic columns. Brand-specific fields (e.g. TBS's
+  // tbs_service_type / interested_in_planning / interested_in_decor) used to
+  // be written here; they were dropped when brands became pipeline-driven.
+  // Planners fill in pipeline-specific fields from the CRM after handoff.
   const dealResult = await insertCRM(
     `INSERT INTO deals
        (name, phone_number, person_name, city, event_date, expected_gathering,
         client_budget, budget, pipeline_id, stage_id, status, deal_source,
         deal_sub_source, created_by, created_by_name, created_by_user_id,
-        tbs_service_type, notes, person_id, interested_in_planning,
-        interested_in_decor, interested_in_venue, owner_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 'DIRECT', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NOW(), NOW())`,
+        notes, person_id, owner_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 'DIRECT', ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
     [
-      `${body.client_name} Wedding`,   // name
+      body.client_name,                  // name
       rawPhone,                          // phone_number
       body.client_name,                  // person_name
       body.city ?? null,                 // city
@@ -201,11 +192,8 @@ export async function POST(
       createdByCRMId,                    // created_by
       createdByName,                     // created_by_name
       createdByCRMId,                    // created_by_user_id
-      tbs_service_type,
       body.notes ?? null,
       person_id,
-      planning,
-      decor,
       body.assign_to_crm_user_id ?? createdByCRMId,  // owner_id
     ]
   );

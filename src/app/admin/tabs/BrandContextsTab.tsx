@@ -58,8 +58,8 @@ export default function BrandContextsTab() {
   useEffect(() => { load(); }, [load]);
 
   // Merge known brands from the CRM pipelines with brands that already have
-  // custom contexts saved. Some saved contexts may reference legacy brand IDs
-  // (e.g. "TBS") that aren't in the current CRM — we still show them so the
+  // custom contexts saved. Some saved contexts may reference brand IDs that
+  // aren't in the current CRM (orphaned rows) — we still show them so the
   // admin can edit or remove the row.
   const rows = useMemo(() => {
     const byBrand = new Map<string, { brand: string; name: string; subtitle: string; ctx: ContextRow | null }>();

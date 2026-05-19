@@ -39,7 +39,7 @@ async function postMessage(to: string, text: string, opts: SendOptions): Promise
 }
 
 // Brand-aware send. Looks up the brand's phone_number_id + access_token
-// from brand_channels (or env-var fallback) and posts the message.
+// from brand_channels and posts the message.
 export async function sendWhatsAppMessage(
   brand: Brand,
   to: string,

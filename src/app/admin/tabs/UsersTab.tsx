@@ -112,6 +112,22 @@ export default function UsersTab({ currentUserId }: UsersTabProps) {
     }
   }
 
+  async function deleteUser(id: string, name: string, email: string) {
+    if (!confirm(`Delete ${name} (${email})?\n\nThis removes the Supabase Auth row and the team-member record, freeing the email for re-invite. Their conversation history stays.\n\nThis cannot be undone.`)) {
+      return;
+    }
+    setBusyId(id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) { setError(data?.error ?? 'Could not delete user'); return; }
+      await load();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function saveAccess(id: string, access: Array<{ brand: string; channel: string }>) {
     setBusyId(id);
     setError(null);
@@ -243,6 +259,17 @@ export default function UsersTab({ currentUserId }: UsersTabProps) {
                       className={u.active ? 'text-danger hover:text-danger' : 'text-success hover:text-success'}
                     >
                       {u.active ? 'Deactivate' : 'Reactivate'}
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteUser(u.id, u.name, u.email)}
+                      disabled={busy || isMe}
+                      className="text-danger hover:text-danger"
+                      title="Permanently delete this user and free up their email"
+                    >
+                      Delete
                     </Button>
                   </div>
 
