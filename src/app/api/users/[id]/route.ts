@@ -5,6 +5,7 @@ import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
+import { logAdminEvent } from '@/lib/admin-events';
 
 async function requireAdmin() {
   const cookieStore = cookies();
@@ -61,8 +62,22 @@ export async function PATCH(
   }
 
   const supabase = createServerClient();
+  // Capture the prior values so the audit log can show before→after.
+  const { data: prev } = await supabase
+    .from('users')
+    .select('name, email, role')
+    .eq('id', params.id)
+    .single();
   const { error } = await supabase.from('users').update(updates).eq('id', params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if ('role' in updates && prev && prev.role !== updates.role) {
+    await logAdminEvent(supabase, admin, 'ROLE_CHANGED', 'user', params.id, {
+      target_email: prev.email,
+      from: prev.role,
+      to: updates.role,
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }
@@ -81,7 +96,7 @@ export async function DELETE(
   const supabase = createServerClient();
   const { data: target } = await supabase
     .from('users')
-    .select('auth_id, role')
+    .select('auth_id, role, name, email')
     .eq('id', params.id)
     .single();
 
@@ -109,6 +124,12 @@ export async function DELETE(
       console.warn(`[users/${params.id}] auth user delete failed:`, err);
     });
   }
+
+  await logAdminEvent(supabase, admin, 'USER_DELETED', 'user', params.id, {
+    target_name: target.name,
+    target_email: target.email,
+    target_role: target.role,
+  });
 
   return NextResponse.json({ ok: true });
 }

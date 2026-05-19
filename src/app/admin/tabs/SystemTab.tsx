@@ -7,11 +7,21 @@ interface EnvGroup { group: string; keys: EnvKey[] }
 interface ConnStatus { ok: boolean; latencyMs: number; error: string | null }
 interface MigrationCheck { key: string; label: string; ok: boolean; detail: string | null }
 
+interface RecentFailure {
+  id: string;
+  conversation_id: string;
+  content: string;
+  send_error: string | null;
+  sender: string;
+  created_at: string;
+}
+
 interface SystemData {
   env: EnvGroup[];
   supabase: ConnStatus;
   crm: ConnStatus;
   migrations?: MigrationCheck[];
+  recent_send_failures?: RecentFailure[];
   runtime: { node: string; env: string; region: string | null };
 }
 
@@ -56,6 +66,7 @@ export default function SystemTab() {
   const missingCount = data.env.reduce((acc, g) => acc + g.keys.filter((k) => !k.set).length, 0);
   const migrations = data.migrations ?? [];
   const migrationsFailing = migrations.filter((m) => !m.ok).length;
+  const recentFailures = data.recent_send_failures ?? [];
 
   return (
     <div className="space-y-6">
@@ -119,6 +130,49 @@ export default function SystemTab() {
                 </div>
                 <StatusPill ok={m.ok} label={m.ok ? 'ok' : 'missing'} />
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recent send failures — surfaces Meta delivery errors so admins can
+          act on them instead of digging through logs. */}
+      {recentFailures.length > 0 && (
+        <div>
+          <div className="flex items-baseline justify-between mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">Recent send failures</h3>
+              <p className="text-[12px] text-text-secondary mt-0.5">
+                Last {recentFailures.length} message(s) that WhatsApp rejected. Each links to the conversation.
+              </p>
+            </div>
+          </div>
+          <div className="rounded-lg border border-border-default bg-elevated overflow-hidden divide-y divide-border-subtle">
+            {recentFailures.map((f) => (
+              <a
+                key={f.id}
+                href={`/inbox#${f.conversation_id}`}
+                className="block px-4 py-2.5 hover:bg-canvas transition-colors"
+              >
+                <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[12px] text-text-primary truncate">
+                      <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-muted text-text-secondary font-medium mr-2">
+                        {f.sender}
+                      </span>
+                      {f.content.length > 80 ? `${f.content.slice(0, 80)}…` : f.content}
+                    </div>
+                    {f.send_error && (
+                      <div className="text-[11px] text-danger mt-0.5 break-words font-mono">
+                        {f.send_error.length > 200 ? `${f.send_error.slice(0, 200)}…` : f.send_error}
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-text-muted whitespace-nowrap" title={new Date(f.created_at).toLocaleString('en-IN')}>
+                    {new Date(f.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              </a>
             ))}
           </div>
         </div>
