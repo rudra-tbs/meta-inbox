@@ -12,7 +12,7 @@ import CommandPalette, { type PaletteAction } from '@/components/CommandPalette'
 export type StatusFilter = 'all' | 'AI' | 'HUMAN' | 'QUALIFIED' | 'MINE' | 'PENDING' | 'SNOOZED';
 
 interface CRMStage { id: number; name: string }
-interface Brand { id: string; name: string }
+interface Brand { id: string; name: string; color: string | null; logo_url: string | null }
 interface AssignableUser { id: string; name: string }
 interface ConfiguredChannel { brand: string; channel: string; display_name: string | null }
 

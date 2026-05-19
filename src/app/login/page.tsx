@@ -4,15 +4,64 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getSupabaseBrowser } from '@/lib/supabase';
 
-const CALLBACK_ERROR_LABELS: Record<string, string> = {
-  verification_failed: 'That verification link is invalid or has expired. Try signing up again.',
-};
+interface FriendlyError {
+  title: string;
+  body: string;
+  tone: 'error' | 'info';
+}
+
+// Maps known error codes / messages to UI copy. We err on the side of being
+// specific — "Invalid login credentials" is actionable, but "OTP expired" or
+// "Email not confirmed" hint at deeper flow problems and deserve their own
+// callouts so users (and the team triaging tickets) know exactly what's
+// happening.
+function explainError(raw: string): FriendlyError {
+  const norm = raw.toLowerCase();
+  if (norm === 'verification_failed' || /verification.*(failed|expired|invalid)/.test(norm)) {
+    return {
+      title: 'Verification link expired',
+      body: 'That link has already been used or expired. Sign up again to get a fresh one — your previous answers will be remembered.',
+      tone: 'error',
+    };
+  }
+  if (/invalid login credentials|invalid_credentials/.test(norm)) {
+    return {
+      title: 'Email or password is wrong',
+      body: "Double-check both. If you've forgotten your password, use the link above to reset it.",
+      tone: 'error',
+    };
+  }
+  if (/email not confirmed|email_not_confirmed/.test(norm)) {
+    return {
+      title: 'Email not confirmed yet',
+      body: 'Open the verification email we sent and click the link before signing in.',
+      tone: 'info',
+    };
+  }
+  if (/rate limit|too many requests/.test(norm)) {
+    return {
+      title: 'Too many attempts',
+      body: 'Wait a minute and try again. Supabase rate-limits repeated sign-in attempts.',
+      tone: 'error',
+    };
+  }
+  if (/network|fetch|failed to fetch/.test(norm)) {
+    return {
+      title: 'Network issue',
+      body: "Couldn't reach the server. Check your connection and try again.",
+      tone: 'error',
+    };
+  }
+  // Fall through: surface the raw message so we don't silently swallow new
+  // Supabase error shapes the team hasn't seen yet.
+  return { title: 'Sign-in failed', body: raw, tone: 'error' };
+}
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FriendlyError | null>(null);
   const [loading, setLoading] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
@@ -20,14 +69,17 @@ export default function LoginPage() {
   const [forgotSent, setForgotSent] = useState(false);
   const [forgotError, setForgotError] = useState<string | null>(null);
 
-  // Read ?error= from the URL on mount without using useSearchParams (which
-  // forces a Suspense boundary for static rendering).
+  // Read ?error= and ?email= from the URL on mount without using
+  // useSearchParams (which forces a Suspense boundary for static rendering).
+  // ?email= is set by the signup flow when it falls back to /login so users
+  // don't have to retype their address.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const raw = new URLSearchParams(window.location.search).get('error');
-    if (raw) {
-      setError(CALLBACK_ERROR_LABELS[raw] ?? raw);
-    }
+    const params = new URLSearchParams(window.location.search);
+    const rawError = params.get('error');
+    if (rawError) setError(explainError(rawError));
+    const presetEmail = params.get('email');
+    if (presetEmail) setEmail(presetEmail);
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -43,13 +95,13 @@ export default function LoginPage() {
       });
 
       if (authError) {
-        setError(authError.message);
+        setError(explainError(authError.message));
         return;
       }
 
       router.push('/inbox');
     } catch {
-      setError('An unexpected error occurred. Please try again.');
+      setError(explainError('An unexpected error occurred. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -138,8 +190,33 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <div className="bg-danger-soft border border-danger/20 text-danger text-sm px-3 py-2 rounded-md">
-              {error}
+            <div
+              role="alert"
+              className={`px-3 py-2.5 rounded-md border flex items-start gap-2 ${
+                error.tone === 'info'
+                  ? 'bg-brand-soft border-brand/20 text-text-default'
+                  : 'bg-danger-soft border-danger/20 text-danger'
+              }`}
+            >
+              <span aria-hidden className="text-base leading-none mt-0.5">
+                {error.tone === 'info' ? 'ℹ️' : '⚠️'}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className={`text-sm font-medium ${error.tone === 'info' ? 'text-text-primary' : ''}`}>
+                  {error.title}
+                </div>
+                <div className={`text-[12px] mt-0.5 leading-snug ${error.tone === 'info' ? 'text-text-secondary' : 'text-danger/90'}`}>
+                  {error.body}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                className={`text-base leading-none ${error.tone === 'info' ? 'text-text-muted hover:text-text-primary' : 'text-danger/70 hover:text-danger'}`}
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
             </div>
           )}
 
