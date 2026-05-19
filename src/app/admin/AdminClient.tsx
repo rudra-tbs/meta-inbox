@@ -6,20 +6,22 @@ import type { AppUser } from '@/types';
 import Button from '@/components/ui/Button';
 import UsersTab from './tabs/UsersTab';
 import PipelinesTab from './tabs/PipelinesTab';
-import ChannelConfigsTab from './tabs/ChannelConfigsTab';
+import ChannelsTab from './tabs/ChannelsTab';
+import BrandContextsTab from './tabs/BrandContextsTab';
 import SystemTab from './tabs/SystemTab';
 
-type TabId = 'users' | 'pipelines' | 'channels' | 'system';
+type TabId = 'users' | 'pipelines' | 'channels' | 'contexts' | 'system';
 
 interface AdminClientProps {
   currentUser: AppUser;
 }
 
 const TABS: Array<{ id: TabId; label: string; sub: string }> = [
-  { id: 'users',     label: 'Users',          sub: 'Roles, access, deactivation' },
-  { id: 'pipelines', label: 'CRM Pipelines',  sub: 'Live view from MySQL CRM' },
-  { id: 'channels',  label: 'Channel configs', sub: 'WhatsApp + Instagram credentials' },
-  { id: 'system',    label: 'System',         sub: 'Env vars + DB connectivity' },
+  { id: 'users',     label: 'Users',          sub: 'Roles, access, deactivation, invites' },
+  { id: 'channels',  label: 'Channels',       sub: 'Connect WhatsApp + Instagram, rotate tokens' },
+  { id: 'pipelines', label: 'Pipelines',      sub: 'Brand → CRM pipeline mapping' },
+  { id: 'contexts',  label: 'Brand contexts', sub: 'Per-brand AI system prompts' },
+  { id: 'system',    label: 'System',         sub: 'Env vars, DB connectivity, migrations' },
 ];
 
 export default function AdminClient({ currentUser }: AdminClientProps) {
@@ -70,8 +72,9 @@ export default function AdminClient({ currentUser }: AdminClientProps) {
         </div>
 
         {active === 'users'     && <UsersTab currentUserId={currentUser.id} />}
+        {active === 'channels'  && <ChannelsTab />}
         {active === 'pipelines' && <PipelinesTab />}
-        {active === 'channels'  && <ChannelConfigsTab />}
+        {active === 'contexts'  && <BrandContextsTab />}
         {active === 'system'    && <SystemTab />}
 
         <div className="mt-10 pt-6 border-t border-border-default">
