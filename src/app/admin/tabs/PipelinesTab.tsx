@@ -27,6 +27,8 @@ interface BrandPipelineRow {
 interface BrandSettingRow {
   brand: string;
   default_mode: 'AI' | 'HUMAN';
+  color: string | null;
+  logo_url: string | null;
 }
 
 interface OnboardingBrand {
@@ -141,17 +143,22 @@ export default function PipelinesTab() {
           </div>
         ) : (
           <div className="divide-y divide-border-subtle">
-            {brandRows.map((br) => (
-              <MappingRow
-                key={br.brand}
-                brand={br.brand}
-                brandName={br.name}
-                mapping={br.mapping}
-                pipelines={pipelines}
-                defaultMode={settings.find((s) => s.brand === br.brand)?.default_mode ?? 'AI'}
-                onSaved={load}
-              />
-            ))}
+            {brandRows.map((br) => {
+              const s = settings.find((x) => x.brand === br.brand);
+              return (
+                <MappingRow
+                  key={br.brand}
+                  brand={br.brand}
+                  brandName={br.name}
+                  mapping={br.mapping}
+                  pipelines={pipelines}
+                  defaultMode={s?.default_mode ?? 'AI'}
+                  color={s?.color ?? null}
+                  logoUrl={s?.logo_url ?? null}
+                  onSaved={load}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -211,6 +218,8 @@ function MappingRow({
   mapping,
   pipelines,
   defaultMode,
+  color,
+  logoUrl,
   onSaved,
 }: {
   brand: string;
@@ -218,6 +227,8 @@ function MappingRow({
   mapping: BrandPipelineRow | null;
   pipelines: Pipeline[];
   defaultMode: 'AI' | 'HUMAN';
+  color: string | null;
+  logoUrl: string | null;
   onSaved: () => void;
 }) {
   const [pipelineId, setPipelineId] = useState<string>(mapping?.pipeline_id ? String(mapping.pipeline_id) : '');
@@ -227,6 +238,14 @@ function MappingRow({
   const [modeBusy, setModeBusy] = useState(false);
   const [modeStatus, setModeStatus] = useState<'idle' | 'saved' | 'error'>('idle');
   const [modeError, setModeError] = useState<string | null>(null);
+
+  // Local edit state for color + logo so the admin can type freely without
+  // hammering the API on every keystroke. Persisted on blur.
+  const [colorDraft, setColorDraft] = useState<string>(color ?? '');
+  const [logoDraft, setLogoDraft] = useState<string>(logoUrl ?? '');
+  const [visualBusy, setVisualBusy] = useState(false);
+  const [visualStatus, setVisualStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [visualError, setVisualError] = useState<string | null>(null);
 
   async function setDefaultMode(next: 'AI' | 'HUMAN') {
     if (next === defaultMode) return;
@@ -252,6 +271,30 @@ function MappingRow({
       // Fade the "Saved" indicator after a moment so the row doesn't shout
       // every time the admin touches the select.
       setTimeout(() => setModeStatus((s) => (s === 'saved' ? 'idle' : s)), 1500);
+    }
+  }
+
+  async function saveVisuals(patch: { color?: string | null; logo_url?: string | null }) {
+    setVisualBusy(true);
+    setVisualError(null);
+    setVisualStatus('idle');
+    try {
+      const res = await fetch('/api/admin/brand-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand, ...patch }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setVisualError(data?.error ?? 'Could not save');
+        setVisualStatus('error');
+        return;
+      }
+      setVisualStatus('saved');
+      onSaved();
+    } finally {
+      setVisualBusy(false);
+      setTimeout(() => setVisualStatus((s) => (s === 'saved' ? 'idle' : s)), 1500);
     }
   }
 
@@ -396,6 +439,90 @@ function MappingRow({
       </div>
 
       {error && <p className="mt-2 text-[11px] text-danger">{error}</p>}
+
+      <div className="mt-4 pt-3 border-t border-border-subtle">
+        <div className="text-[11px] font-medium text-text-secondary mb-2">Brand chip in the inbox rail</div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <ChipPreview name={brandName} color={colorDraft || color} logoUrl={logoDraft || logoUrl} />
+
+          <div className="flex items-center gap-1.5">
+            <label className="text-[11px] text-text-muted">Color</label>
+            <input
+              type="color"
+              value={colorDraft && /^#[0-9a-f]{6}$/i.test(colorDraft) ? colorDraft : '#7c3aed'}
+              onChange={(e) => setColorDraft(e.target.value)}
+              onBlur={() => {
+                const next = colorDraft.trim();
+                if ((next || null) !== (color ?? null)) saveVisuals({ color: next || null });
+              }}
+              disabled={visualBusy}
+              className="w-7 h-7 rounded border border-border-default cursor-pointer disabled:opacity-50"
+              aria-label="Brand color"
+            />
+            {colorDraft && (
+              <button
+                type="button"
+                onClick={() => { setColorDraft(''); saveVisuals({ color: null }); }}
+                disabled={visualBusy}
+                className="text-[10px] text-text-muted hover:text-danger"
+                title="Clear color"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">
+            <label className="text-[11px] text-text-muted whitespace-nowrap">Logo URL</label>
+            <input
+              type="url"
+              value={logoDraft}
+              onChange={(e) => setLogoDraft(e.target.value)}
+              onBlur={() => {
+                const next = logoDraft.trim();
+                if ((next || null) !== (logoUrl ?? null)) saveVisuals({ logo_url: next || null });
+              }}
+              disabled={visualBusy}
+              placeholder="https://…/logo.png"
+              className="flex-1 text-xs border border-border-default rounded px-2 py-1 bg-elevated text-text-default focus:outline-none focus:ring-2 focus:ring-brand/15 disabled:opacity-50"
+            />
+          </div>
+
+          {visualBusy && <span className="text-[11px] text-text-muted">Saving…</span>}
+          {visualStatus === 'saved' && !visualBusy && <span className="text-[11px] text-success">Saved</span>}
+          {visualError && <span className="text-[11px] text-danger" title={visualError}>Failed</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChipPreview({
+  name,
+  color,
+  logoUrl,
+}: {
+  name: string;
+  color: string | null;
+  logoUrl: string | null;
+}) {
+  const parts = name.trim().split(/\s+/);
+  const initials = parts.length >= 2 ? parts.map((p) => p[0]).join('').slice(0, 3).toUpperCase() : name.slice(0, 3).toUpperCase();
+  const style = color ? { backgroundColor: color, color: '#fff' } : undefined;
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        style={style}
+        className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold overflow-hidden ${color ? '' : 'bg-muted text-text-secondary'}`}
+      >
+        {logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logoUrl} alt="" className="w-full h-full object-cover" />
+        ) : (
+          initials
+        )}
+      </div>
+      <span className="text-[11px] text-text-muted">Preview</span>
     </div>
   );
 }

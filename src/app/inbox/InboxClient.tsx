@@ -12,8 +12,9 @@ import CommandPalette, { type PaletteAction } from '@/components/CommandPalette'
 export type StatusFilter = 'all' | 'AI' | 'HUMAN' | 'QUALIFIED' | 'MINE' | 'PENDING' | 'SNOOZED';
 
 interface CRMStage { id: number; name: string }
-interface Brand { id: string; name: string }
+interface Brand { id: string; name: string; color: string | null; logo_url: string | null }
 interface AssignableUser { id: string; name: string }
+interface ConfiguredChannel { brand: string; channel: string; display_name: string | null }
 
 interface InboxClientProps {
   currentUser: AppUser;
@@ -37,6 +38,10 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   const [assigneeFilter, setAssigneeFilter] = useState<string>('');
   const [agents, setAgents] = useState<AssignableUser[]>([]);
   const [stages, setStages] = useState<CRMStage[]>([]);
+  // Connected (brand, channel) → display_name (typically the phone number).
+  // Used to surface the "send a test message to X" hint in the empty inbox
+  // state. Loaded once after sign-in.
+  const [configuredChannels, setConfiguredChannels] = useState<ConfiguredChannel[]>([]);
   const [refreshingStages, setRefreshingStages] = useState(false);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -166,13 +171,18 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
 
   // Load the brands the user can switch between. We pick the active brand from
   // localStorage if it's still valid, otherwise fall back to the first one.
+  // Also pull the configured-channels list so empty-inbox hints can name the
+  // exact phone number to test against.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/brands');
-        if (!res.ok) return;
-        const data = (await res.json()) as Brand[];
+        const [brandsRes, stateRes] = await Promise.all([
+          fetch('/api/brands'),
+          fetch('/api/onboarding/state'),
+        ]);
+        if (!brandsRes.ok) return;
+        const data = (await brandsRes.json()) as Brand[];
         if (cancelled) return;
         setBrands(data);
         if (data.length > 0) {
@@ -182,6 +192,10 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
               : null;
           const valid = stored && data.some((b) => b.id === stored) ? stored : data[0].id;
           setActiveBrand(valid);
+        }
+        if (stateRes.ok) {
+          const stateData = await stateRes.json();
+          if (!cancelled) setConfiguredChannels(stateData.configured ?? []);
         }
       } finally {
         if (!cancelled) setLoadingBrands(false);
@@ -579,6 +593,12 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
           onToggleCheck={toggleCheck}
           onClearChecks={() => setCheckedIds(new Set())}
           onBulkDone={() => { fetchConversations(); }}
+          noBrandsAssigned={!loadingBrands && brands.length === 0}
+          activeChannelLabel={
+            configuredChannels.find(
+              (c) => c.brand === activeBrand && (isAllChannels ? true : c.channel === activeChannel),
+            )?.display_name ?? null
+          }
         />
       </div>
 

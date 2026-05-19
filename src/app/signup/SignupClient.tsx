@@ -5,10 +5,9 @@ import { useRouter } from 'next/navigation';
 import Stepper from './Stepper';
 import AccountStep from './steps/AccountStep';
 import BrandsStep, { type BrandOption } from './steps/BrandsStep';
-import ChannelsStep, { type ConfiguredChannel, type PickedChannel } from './steps/ChannelsStep';
-import SummaryStep from './steps/SummaryStep';
+import SummaryStep, { type ConfiguredChannel } from './steps/SummaryStep';
 
-const STEP_LABELS = ['Account', 'Brands', 'Channels', 'Review'];
+const STEP_LABELS = ['Account', 'Brands', 'Review'];
 
 interface VerifiedUser {
   id: string;
@@ -32,7 +31,6 @@ export default function SignupClient({ verifiedUser }: SignupClientProps) {
   const [brands, setBrands] = useState<BrandOption[]>([]);
   const [configured, setConfigured] = useState<ConfiguredChannel[]>([]);
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
-  const [picked, setPicked] = useState<PickedChannel[]>([]);
   const [loadingState, setLoadingState] = useState(false);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
 
@@ -56,24 +54,6 @@ export default function SignupClient({ verifiedUser }: SignupClientProps) {
       loadOnboardingState();
     }
   }, [step, brands.length]);
-
-  // When brand selection changes, auto-include inherited channels in `picked`
-  // so the user doesn't have to manually toggle each one — they can opt out
-  // on the Channels step if they want.
-  useEffect(() => {
-    setPicked((prev) => {
-      const stillValid = prev.filter((p) => selectedBrands.includes(p.brand));
-      const autoAdds: PickedChannel[] = [];
-      for (const brand of selectedBrands) {
-        for (const c of configured) {
-          if (c.brand !== brand) continue;
-          const already = stillValid.some((p) => p.brand === brand && p.channel === c.channel);
-          if (!already) autoAdds.push({ brand, channel: c.channel });
-        }
-      }
-      return [...stillValid, ...autoAdds];
-    });
-  }, [selectedBrands, configured]);
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -124,27 +104,13 @@ export default function SignupClient({ verifiedUser }: SignupClientProps) {
             )
           )}
 
-          {step === 2 && (
-            <ChannelsStep
-              brands={brands}
-              selectedBrands={selectedBrands}
-              configured={configured}
-              picked={picked}
-              onPickedChange={setPicked}
-              onConnected={(c) => setConfigured((prev) => [...prev, c])}
-              onBack={() => setStep(1)}
-              onNext={() => setStep(3)}
-            />
-          )}
-
-          {step === 3 && user && (
+          {step === 2 && user && (
             <SummaryStep
               user={user}
               brands={brands}
               selectedBrands={selectedBrands}
               configured={configured}
-              picked={picked}
-              onBack={() => setStep(2)}
+              onBack={() => setStep(1)}
               onFinish={() => router.push('/inbox')}
             />
           )}

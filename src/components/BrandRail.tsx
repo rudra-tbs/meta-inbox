@@ -7,6 +7,8 @@ import AccountMenu from './AccountMenu';
 interface Brand {
   id: string;
   name: string;
+  color?: string | null;
+  logo_url?: string | null;
 }
 
 interface BrandRailProps {
@@ -61,6 +63,17 @@ export default function BrandRail({
         ) : (
           brands.map((b) => {
             const isActive = b.id === activeBrand;
+            const hasColor = !!b.color;
+            const hasLogo = !!b.logo_url;
+
+            // Inline style only kicks in when a custom color is set, so the
+            // Tailwind fallback styles stay applied for un-themed brands.
+            const style = hasColor
+              ? isActive
+                ? { backgroundColor: b.color!, color: '#fff' }
+                : { backgroundColor: `${b.color}33` /* 20% alpha */, color: '#fff' }
+              : undefined;
+
             return (
               <button
                 key={b.id}
@@ -68,12 +81,22 @@ export default function BrandRail({
                 title={b.name}
                 aria-label={`Switch to ${b.name}`}
                 aria-pressed={isActive}
-                className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold transition-all
-                  ${isActive
-                    ? 'bg-elevated text-text-primary shadow-lg ring-1 ring-white/20'
-                    : 'bg-white/5 text-white/70 hover:bg-white/10 hover:text-text-inverse'}`}
+                style={style}
+                className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold transition-all overflow-hidden
+                  ${hasColor
+                    ? isActive
+                      ? 'shadow-lg ring-1 ring-white/30'
+                      : 'hover:opacity-90'
+                    : isActive
+                      ? 'bg-elevated text-text-primary shadow-lg ring-1 ring-white/20'
+                      : 'bg-white/5 text-white/70 hover:bg-white/10 hover:text-text-inverse'}`}
               >
-                {shortLabel(b)}
+                {hasLogo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={b.logo_url!} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  shortLabel(b)
+                )}
               </button>
             );
           })

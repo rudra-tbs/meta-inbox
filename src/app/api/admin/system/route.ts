@@ -362,5 +362,53 @@ async function runMigrationChecks(): Promise<MigrationCheck[]> {
     });
   }
 
+  // 8b. brand_settings.color column — added in a follow-up migration. Probed
+  // separately because a project that's run the original brand_settings file
+  // may still be missing this one.
+  try {
+    const { error } = await supabase
+      .from('brand_settings')
+      .select('color', { count: 'exact', head: true });
+    const missing = !!error && /color/i.test(error.message ?? '');
+    checks.push({
+      key: 'col_brand_settings_color',
+      label: 'brand_settings.color column (brand chip color)',
+      ok: !error,
+      detail: missing
+        ? 'Missing — run migrations/2026_05_brand_settings_color_logo.sql'
+        : error?.message ?? null,
+    });
+  } catch (err) {
+    checks.push({
+      key: 'col_brand_settings_color',
+      label: 'brand_settings.color column (brand chip color)',
+      ok: false,
+      detail: err instanceof Error ? err.message : 'probe failed',
+    });
+  }
+
+  // 9. tag_taxonomy table — backs the admin-managed tag list.
+  try {
+    const { error } = await supabase
+      .from('tag_taxonomy')
+      .select('name', { count: 'exact', head: true });
+    const missing = !!error && /relation "?tag_taxonomy"? does not exist/i.test(error.message ?? '');
+    checks.push({
+      key: 'table_tag_taxonomy',
+      label: 'tag_taxonomy table (admin-managed tag list)',
+      ok: !error,
+      detail: missing
+        ? 'Missing — run migrations/2026_05_tag_taxonomy.sql'
+        : error?.message ?? null,
+    });
+  } catch (err) {
+    checks.push({
+      key: 'table_tag_taxonomy',
+      label: 'tag_taxonomy table (admin-managed tag list)',
+      ok: false,
+      detail: err instanceof Error ? err.message : 'probe failed',
+    });
+  }
+
   return checks;
 }

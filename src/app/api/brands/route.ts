@@ -16,6 +16,8 @@ interface PipelineRow {
 interface BrandOut {
   id: string;
   name: string;
+  color: string | null;
+  logo_url: string | null;
 }
 
 // Returns the list of brands the current user can switch between in the inbox.
@@ -84,10 +86,23 @@ export async function GET() {
     }
   }
 
+  // Per-brand visual settings (color, logo) for the BrandRail. Missing rows
+  // fall through to nulls — the rail then renders its generic chip.
+  const { data: settingsRows } = await supabase
+    .from('brand_settings')
+    .select('brand, color, logo_url')
+    .in('brand', allowedBrandIds);
+  const settingsByBrand = new Map<string, { color: string | null; logo_url: string | null }>();
+  for (const r of (settingsRows ?? []) as Array<{ brand: string; color: string | null; logo_url: string | null }>) {
+    settingsByBrand.set(r.brand, { color: r.color, logo_url: r.logo_url });
+  }
+
   const out: BrandOut[] = allowedBrandIds
     .map((id) => ({
       id,
       name: nameById.get(id) ?? id,
+      color: settingsByBrand.get(id)?.color ?? null,
+      logo_url: settingsByBrand.get(id)?.logo_url ?? null,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
