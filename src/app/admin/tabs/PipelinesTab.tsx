@@ -24,6 +24,11 @@ interface BrandPipelineRow {
   updated_by_name: string | null;
 }
 
+interface BrandSettingRow {
+  brand: string;
+  default_mode: 'AI' | 'HUMAN';
+}
+
 interface OnboardingBrand {
   id: string;
   name: string;
@@ -44,6 +49,7 @@ interface OnboardingState {
 export default function PipelinesTab() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [mappings, setMappings] = useState<BrandPipelineRow[]>([]);
+  const [settings, setSettings] = useState<BrandSettingRow[]>([]);
   const [state, setState] = useState<OnboardingState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,9 +58,10 @@ export default function PipelinesTab() {
     setLoading(true);
     setError(null);
     try {
-      const [pipelineRes, mappingRes, stateRes] = await Promise.all([
+      const [pipelineRes, mappingRes, settingsRes, stateRes] = await Promise.all([
         fetch('/api/admin/pipelines'),
         fetch('/api/admin/brand-pipelines'),
+        fetch('/api/admin/brand-settings'),
         fetch('/api/onboarding/state'),
       ]);
 
@@ -67,6 +74,7 @@ export default function PipelinesTab() {
       }
 
       if (mappingRes.ok) setMappings(await mappingRes.json());
+      if (settingsRes.ok) setSettings(await settingsRes.json());
       if (stateRes.ok) setState(await stateRes.json());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error');
@@ -140,6 +148,7 @@ export default function PipelinesTab() {
                 brandName={br.name}
                 mapping={br.mapping}
                 pipelines={pipelines}
+                defaultMode={settings.find((s) => s.brand === br.brand)?.default_mode ?? 'AI'}
                 onSaved={load}
               />
             ))}
@@ -201,18 +210,50 @@ function MappingRow({
   brandName,
   mapping,
   pipelines,
+  defaultMode,
   onSaved,
 }: {
   brand: string;
   brandName: string;
   mapping: BrandPipelineRow | null;
   pipelines: Pipeline[];
+  defaultMode: 'AI' | 'HUMAN';
   onSaved: () => void;
 }) {
   const [pipelineId, setPipelineId] = useState<string>(mapping?.pipeline_id ? String(mapping.pipeline_id) : '');
   const [stageId, setStageId] = useState<string>(mapping?.initial_stage_id ? String(mapping.initial_stage_id) : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modeBusy, setModeBusy] = useState(false);
+  const [modeStatus, setModeStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [modeError, setModeError] = useState<string | null>(null);
+
+  async function setDefaultMode(next: 'AI' | 'HUMAN') {
+    if (next === defaultMode) return;
+    setModeBusy(true);
+    setModeError(null);
+    setModeStatus('idle');
+    try {
+      const res = await fetch('/api/admin/brand-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand, default_mode: next }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setModeError(data?.error ?? 'Could not save default mode');
+        setModeStatus('error');
+        return;
+      }
+      setModeStatus('saved');
+      onSaved();
+    } finally {
+      setModeBusy(false);
+      // Fade the "Saved" indicator after a moment so the row doesn't shout
+      // every time the admin touches the select.
+      setTimeout(() => setModeStatus((s) => (s === 'saved' ? 'idle' : s)), 1500);
+    }
+  }
 
   const selectedPipeline = pipelines.find((p) => String(p.id) === pipelineId) ?? null;
   const stages = selectedPipeline?.stages ?? [];
@@ -279,6 +320,25 @@ function MappingRow({
               Not mapped — push-to-CRM falls back to env vars for this brand.
             </div>
           )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="text-[11px] font-medium text-text-secondary whitespace-nowrap">
+            Default mode for new conversations
+          </label>
+          <select
+            value={defaultMode}
+            onChange={(e) => setDefaultMode(e.target.value as 'AI' | 'HUMAN')}
+            disabled={modeBusy}
+            className="text-xs border border-border-default rounded px-2 py-1 bg-elevated text-text-default focus:outline-none focus:ring-2 focus:ring-brand/15 disabled:opacity-50"
+            title="Mode each new inbound conversation starts in for this brand, on every channel"
+          >
+            <option value="AI">AI</option>
+            <option value="HUMAN">Human</option>
+          </select>
+          {modeBusy && <span className="text-[11px] text-text-muted">Saving…</span>}
+          {modeStatus === 'saved' && !modeBusy && <span className="text-[11px] text-success">Saved</span>}
+          {modeError && <span className="text-[11px] text-danger" title={modeError}>Failed</span>}
         </div>
       </div>
 

@@ -339,5 +339,28 @@ async function runMigrationChecks(): Promise<MigrationCheck[]> {
     });
   }
 
+  // 8. brand_settings table — backs per-brand default conversation mode.
+  try {
+    const { error } = await supabase
+      .from('brand_settings')
+      .select('brand', { count: 'exact', head: true });
+    const missing = !!error && /relation "?brand_settings"? does not exist/i.test(error.message ?? '');
+    checks.push({
+      key: 'table_brand_settings',
+      label: 'brand_settings table (per-brand default mode)',
+      ok: !error,
+      detail: missing
+        ? 'Missing — run migrations/2026_05_brand_settings.sql'
+        : error?.message ?? null,
+    });
+  } catch (err) {
+    checks.push({
+      key: 'table_brand_settings',
+      label: 'brand_settings table (per-brand default mode)',
+      ok: false,
+      detail: err instanceof Error ? err.message : 'probe failed',
+    });
+  }
+
   return checks;
 }

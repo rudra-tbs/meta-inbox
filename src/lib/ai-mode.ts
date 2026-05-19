@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Conversation, ConversationMode } from '@/types';
+import { getBrandDefaultMode } from '@/lib/brand-settings';
 
 export async function resolveConversation(
   supabase: SupabaseClient,
@@ -18,7 +19,8 @@ export async function resolveConversation(
     .maybeSingle();
 
   if (!existing) {
-    console.log(`[AI Mode] New conversation for ${phoneNumber} → creating with mode=AI`);
+    const startMode = await getBrandDefaultMode(supabase, brand);
+    console.log(`[AI Mode] New conversation for ${phoneNumber} → creating with mode=${startMode} (brand default)`);
     const now = new Date().toISOString();
     const { data: created, error } = await supabase
       .from('conversations')
@@ -27,7 +29,10 @@ export async function resolveConversation(
         brand,
         channel,
         contact_name: contactName,
-        mode: 'AI',
+        mode: startMode,
+        // When the brand defaults to HUMAN we also stamp manually_set_human so
+        // the resolver doesn't flip back to AI on the next inbound.
+        manually_set_human: startMode === 'HUMAN',
         is_first_contact: true,
         first_contact_at: now,
         last_message_at: now,
@@ -41,7 +46,7 @@ export async function resolveConversation(
       throw new Error(`Failed to create conversation: ${error?.message}`);
     }
 
-    return { conversation: created as Conversation, mode: 'AI' };
+    return { conversation: created as Conversation, mode: startMode };
   }
 
   console.log(`[AI Mode] Existing conversation ${existing.id}:`, {

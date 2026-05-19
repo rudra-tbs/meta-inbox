@@ -15,6 +15,7 @@ export type AdminEventType =
   | 'PIPELINE_UNMAPPED'
   | 'BRAND_CONTEXT_UPDATED'
   | 'BRAND_CONTEXT_DELETED'
+  | 'BRAND_DEFAULT_MODE_CHANGED'
   | 'TEMPLATE_CREATED'
   | 'TEMPLATE_UPDATED'
   | 'TEMPLATE_DELETED';
@@ -24,6 +25,7 @@ export type AdminTargetKind =
   | 'channel'
   | 'brand_pipeline'
   | 'brand_context'
+  | 'brand_setting'
   | 'reply_template';
 
 // Best-effort: never throws, never blocks the actual admin action. If logging
