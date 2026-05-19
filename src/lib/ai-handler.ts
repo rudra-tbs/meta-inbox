@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Conversation, QualificationData, Brand } from '@/types';
-import { callOpenRouter } from '@/lib/openrouter';
+import { callLLM } from '@/lib/llm';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { findOrCreateContact, updateContactFromQualification } from '@/lib/contact-merge';
 import { getBrandSystemPrompt } from '@/lib/brand-contexts';
@@ -114,7 +114,7 @@ export async function handleAIResponse(
     messages.push({ role: 'user', content: inboundMessage });
   }
 
-  const rawAIResponse = stripThinkingBlocks(await callOpenRouter(messages));
+  const rawAIResponse = stripThinkingBlocks(await callLLM(messages));
 
   // ABSTAIN: silently hand off to human
   if (rawAIResponse.trim() === 'ABSTAIN') {
