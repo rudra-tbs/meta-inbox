@@ -60,19 +60,15 @@ export async function GET(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const name = ((user.user_metadata as any)?.name as string | undefined)?.trim() || user.email?.split('@')[0] || 'New user';
 
-    // Bootstrap: the first user signing up becomes ADMIN so they can manage
-    // the rest. Subsequent signups default to AGENT.
-    const { count: adminCount } = await serviceClient
-      .from('users')
-      .select('id', { count: 'exact', head: true })
-      .eq('role', 'ADMIN');
-    const role = (adminCount ?? 0) === 0 ? 'ADMIN' : 'AGENT';
-
+    // Self-signup always creates an Agent. Admin access is invite-only:
+    // an existing admin promotes a user from /admin → Users, or the first
+    // admin is seeded by SQL on initial deploy (see CLAUDE.md). This avoids
+    // accidentally handing admin powers to whoever signs up first.
     await serviceClient.from('users').insert({
       auth_id: user.id,
       name,
       email: user.email,
-      role,
+      role: 'AGENT',
     });
   }
 

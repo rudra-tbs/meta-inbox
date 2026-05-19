@@ -79,6 +79,10 @@ export default function AccountStep({ initial, onAwaitingVerification }: Account
         <p className="text-sm text-text-secondary mt-1">A few details to get you in.</p>
       </div>
 
+      <div className="bg-brand-soft border border-brand/20 rounded-md px-3 py-2 text-[12px] text-text-default">
+        Self-signup creates an <strong>Agent</strong> account. Admin access is invite-only — an existing admin can promote you from <em>/admin → Users</em>.
+      </div>
+
       <Field
         label="Full name"
         placeholder="Priya Sharma"
