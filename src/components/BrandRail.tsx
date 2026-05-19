@@ -4,12 +4,39 @@ import { useRouter } from 'next/navigation';
 import type { AppUser } from '@/types';
 import AccountMenu from './AccountMenu';
 
-interface BrandRailProps {
-  activeBrand: string;
-  currentUser: AppUser;
+interface Brand {
+  id: string;
+  name: string;
 }
 
-export default function BrandRail({ activeBrand, currentUser }: BrandRailProps) {
+interface BrandRailProps {
+  brands: Brand[];
+  activeBrand: string;
+  onSelectBrand: (brandId: string) => void;
+  currentUser: AppUser;
+  loading?: boolean;
+}
+
+function shortLabel(brand: Brand): string {
+  // Initials for multi-word names ("The Bride Side" → "TBS"), else first 3 chars.
+  const parts = brand.name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return parts
+      .map((p) => p[0])
+      .join('')
+      .slice(0, 3)
+      .toUpperCase();
+  }
+  return brand.name.slice(0, 3).toUpperCase();
+}
+
+export default function BrandRail({
+  brands,
+  activeBrand,
+  onSelectBrand,
+  currentUser,
+  loading,
+}: BrandRailProps) {
   const router = useRouter();
   const isAdmin = currentUser.role === 'ADMIN';
 
@@ -20,14 +47,37 @@ export default function BrandRail({ activeBrand, currentUser }: BrandRailProps) 
         <span className="text-text-inverse font-bold text-base">A</span>
       </div>
 
-      {/* Active brand pill — placeholder for now while brands move to CRM pipelines */}
-      <div className="flex flex-col items-center gap-0.5">
-        <div
-          className="w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold bg-elevated text-text-primary shadow-lg"
-          title={activeBrand}
-        >
-          {activeBrand.slice(0, 3).toUpperCase()}
-        </div>
+      {/* Brand stack — one button per brand the user can access */}
+      <div className="flex flex-col items-center gap-1.5 overflow-y-auto scrollbar-none">
+        {loading ? (
+          <div className="w-10 h-10 rounded-lg bg-white/10 animate-pulse" />
+        ) : brands.length === 0 ? (
+          <div
+            title="No brands assigned — ask an admin"
+            className="w-10 h-10 rounded-lg flex items-center justify-center text-[10px] font-bold text-white/40 border border-white/10"
+          >
+            —
+          </div>
+        ) : (
+          brands.map((b) => {
+            const isActive = b.id === activeBrand;
+            return (
+              <button
+                key={b.id}
+                onClick={() => onSelectBrand(b.id)}
+                title={b.name}
+                aria-label={`Switch to ${b.name}`}
+                aria-pressed={isActive}
+                className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold transition-all
+                  ${isActive
+                    ? 'bg-elevated text-text-primary shadow-lg ring-1 ring-white/20'
+                    : 'bg-white/5 text-white/70 hover:bg-white/10 hover:text-text-inverse'}`}
+              >
+                {shortLabel(b)}
+              </button>
+            );
+          })
+        )}
       </div>
 
       {/* Spacer */}

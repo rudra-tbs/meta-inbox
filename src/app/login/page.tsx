@@ -14,6 +14,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSending, setForgotSending] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotError, setForgotError] = useState<string | null>(null);
 
   // Read ?error= from the URL on mount without using useSearchParams (which
   // forces a Suspense boundary for static rendering).
@@ -50,6 +55,39 @@ export default function LoginPage() {
     }
   }
 
+  function openForgot() {
+    setForgotEmail(email);
+    setForgotError(null);
+    setForgotSent(false);
+    setForgotOpen(true);
+  }
+
+  async function handleForgotSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setForgotError(null);
+    setForgotSending(true);
+    try {
+      const supabase = getSupabaseBrowser();
+      // Always show success even if the email isn't on file, so attackers
+      // can't enumerate accounts. Supabase will silently no-op for unknown
+      // emails.
+      const origin = window.location.origin;
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        forgotEmail.trim().toLowerCase(),
+        { redirectTo: `${origin}/auth/reset-password` }
+      );
+      if (resetError) {
+        setForgotError(resetError.message);
+        return;
+      }
+      setForgotSent(true);
+    } catch {
+      setForgotError('Network error. Please try again.');
+    } finally {
+      setForgotSending(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
       <div className="w-96 bg-elevated rounded-2xl shadow-lg border border-border-default p-8">
@@ -77,9 +115,18 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-text-default mb-1">
-              Password
-            </label>
+            <div className="flex items-baseline justify-between mb-1">
+              <label className="block text-sm font-medium text-text-default">
+                Password
+              </label>
+              <button
+                type="button"
+                onClick={openForgot}
+                className="text-[11px] text-brand font-medium hover:underline"
+              >
+                Forgot password?
+              </button>
+            </div>
             <input
               type="password"
               value={password}
@@ -112,6 +159,71 @@ export default function LoginPage() {
           </a>
         </p>
       </div>
+
+      {forgotOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+          onClick={() => setForgotOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-96 bg-elevated rounded-2xl shadow-lg border border-border-default p-6"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-text-primary">Reset password</h2>
+              <button
+                onClick={() => setForgotOpen(false)}
+                className="text-text-muted hover:text-text-primary text-xl leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            {forgotSent ? (
+              <div>
+                <p className="text-sm text-text-default leading-relaxed">
+                  If an account exists for <span className="font-medium">{forgotEmail}</span>, a
+                  reset link is on its way. Check your inbox (and spam folder).
+                </p>
+                <button
+                  onClick={() => setForgotOpen(false)}
+                  className="mt-4 w-full bg-brand text-text-inverse py-2 rounded-md text-sm font-medium hover:bg-brand-hover transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleForgotSubmit} className="space-y-3">
+                <p className="text-xs text-text-secondary leading-relaxed">
+                  Enter your work email — we&apos;ll send a link to set a new password.
+                </p>
+                <input
+                  type="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  required
+                  autoFocus
+                  className="w-full px-3 py-2 border border-border-default rounded-md text-sm text-text-default placeholder:text-text-muted focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
+                  placeholder="you@acceltancy.in"
+                />
+                {forgotError && (
+                  <div className="bg-danger-soft border border-danger/20 text-danger text-xs px-3 py-2 rounded-md">
+                    {forgotError}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={forgotSending || !forgotEmail.trim()}
+                  className="w-full bg-brand text-text-inverse py-2 rounded-md text-sm font-medium hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {forgotSending ? 'Sending…' : 'Send reset link'}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

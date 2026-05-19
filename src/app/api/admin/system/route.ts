@@ -106,14 +106,138 @@ export async function GET() {
     };
   }
 
+  // Migration checks. The webhook depends on schema + RPCs that ship through
+  // migrations/*.sql — surfacing them here lets the admin spot a missed
+  // migration before the inbox starts misbehaving silently.
+  const migrationChecks = await runMigrationChecks();
+
   return NextResponse.json({
     env: envGroups,
     supabase: supabaseStatus,
     crm: crmStatus,
+    migrations: migrationChecks,
     runtime: {
       node: process.version,
       env: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'unknown',
       region: process.env.VERCEL_REGION ?? null,
     },
   });
+}
+
+interface MigrationCheck {
+  key: string;
+  label: string;
+  ok: boolean;
+  detail: string | null;
+}
+
+async function runMigrationChecks(): Promise<MigrationCheck[]> {
+  const supabase = createServerClient();
+  const checks: MigrationCheck[] = [];
+
+  // 1. increment_unread RPC — used by the webhook to bump unread atomically.
+  // We call it with a UUID that doesn't exist. If the function is missing,
+  // PostgREST returns a "Could not find the function" error; if it's there,
+  // the underlying UPDATE no-ops and we get a clean success.
+  try {
+    const probeId = '00000000-0000-0000-0000-000000000000';
+    const { error } = await supabase.rpc('increment_unread', { conv_id: probeId });
+    if (error) {
+      const msg = error.message ?? '';
+      const missing = /Could not find the function|function .* does not exist/i.test(msg);
+      checks.push({
+        key: 'rpc_increment_unread',
+        label: 'RPC increment_unread (atomic unread bump)',
+        ok: !missing,
+        detail: missing ? 'Missing — run migrations/2026_05_hardening.sql' : msg,
+      });
+    } else {
+      checks.push({
+        key: 'rpc_increment_unread',
+        label: 'RPC increment_unread (atomic unread bump)',
+        ok: true,
+        detail: null,
+      });
+    }
+  } catch (err) {
+    checks.push({
+      key: 'rpc_increment_unread',
+      label: 'RPC increment_unread (atomic unread bump)',
+      ok: false,
+      detail: err instanceof Error ? err.message : 'probe failed',
+    });
+  }
+
+  // 2. unread_count column — webhook also depends on this. Probe by selecting
+  // the column; supabase-js returns an error referencing the column name when
+  // it's missing.
+  try {
+    const { error } = await supabase
+      .from('conversations')
+      .select('unread_count', { count: 'exact', head: true });
+    const missing = !!error && /unread_count/i.test(error.message ?? '');
+    checks.push({
+      key: 'col_unread_count',
+      label: 'conversations.unread_count column',
+      ok: !error,
+      detail: missing
+        ? 'Missing — run migrations/add_unread_count.sql'
+        : error?.message ?? null,
+    });
+  } catch (err) {
+    checks.push({
+      key: 'col_unread_count',
+      label: 'conversations.unread_count column',
+      ok: false,
+      detail: err instanceof Error ? err.message : 'probe failed',
+    });
+  }
+
+  // 3. delivered_status column — used by the reply route and AI handler.
+  try {
+    const { error } = await supabase
+      .from('messages')
+      .select('delivered_status', { count: 'exact', head: true });
+    const missing = !!error && /delivered_status/i.test(error.message ?? '');
+    checks.push({
+      key: 'col_delivered_status',
+      label: 'messages.delivered_status column',
+      ok: !error,
+      detail: missing
+        ? 'Missing — run migrations/2026_05_hardening.sql'
+        : error?.message ?? null,
+    });
+  } catch (err) {
+    checks.push({
+      key: 'col_delivered_status',
+      label: 'messages.delivered_status column',
+      ok: false,
+      detail: err instanceof Error ? err.message : 'probe failed',
+    });
+  }
+
+  // 4. users.active column — needed for the deactivate flow.
+  try {
+    const { error } = await supabase
+      .from('users')
+      .select('active', { count: 'exact', head: true });
+    const missing = !!error && /active/i.test(error.message ?? '');
+    checks.push({
+      key: 'col_users_active',
+      label: 'users.active column (deactivation)',
+      ok: !error,
+      detail: missing
+        ? 'Missing — run migrations/2026_05_admin_panel.sql'
+        : error?.message ?? null,
+    });
+  } catch (err) {
+    checks.push({
+      key: 'col_users_active',
+      label: 'users.active column (deactivation)',
+      ok: false,
+      detail: err instanceof Error ? err.message : 'probe failed',
+    });
+  }
+
+  return checks;
 }

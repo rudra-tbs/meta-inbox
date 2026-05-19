@@ -8,6 +8,7 @@ import ModeToggle from './ModeToggle';
 import AssignDropdown from './AssignDropdown';
 import PushToCRMModal from './PushToCRMModal';
 import DetailRail from './DetailRail';
+import LeadInfoBar from './LeadInfoBar';
 import Button from './ui/Button';
 import Dot from './ui/Dot';
 
@@ -275,6 +276,11 @@ export default function ChatWindow({
           )}
         </div>
       </header>
+
+      {/* Lead snapshot — at-a-glance qualification context, only renders when
+          we have at least one field. RM shouldn't need to open the detail rail
+          just to see city / dates / budget. */}
+      <LeadInfoBar conversation={conversation} />
 
       {/* Callback banner — slim, one line, brand-token colors */}
       {conversation.callback_required && (

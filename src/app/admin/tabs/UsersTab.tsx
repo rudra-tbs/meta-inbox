@@ -47,6 +47,9 @@ export default function UsersTab({ currentUserId }: UsersTabProps) {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createNotice, setCreateNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -122,14 +125,53 @@ export default function UsersTab({ currentUserId }: UsersTabProps) {
     }
   }
 
+  async function createUser(payload: {
+    name: string;
+    email: string;
+    role: 'ADMIN' | 'AGENT';
+    access: Array<{ brand: string; channel: string }>;
+  }): Promise<{ ok: boolean; error?: string }> {
+    setCreateBusy(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { ok: false, error: data?.error ?? 'Could not create user' };
+      }
+      setCreateOpen(false);
+      setCreateNotice(`Invite sent to ${payload.email}. They'll set their own password from the email link.`);
+      await load();
+      return { ok: true };
+    } finally {
+      setCreateBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-sm font-semibold text-text-primary">Team members</h3>
-        <p className="text-[12px] text-text-secondary mt-0.5">
-          {users.length} {users.length === 1 ? 'user' : 'users'}. Edit roles, manage brand/channel access, deactivate accounts.
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="text-sm font-semibold text-text-primary">Team members</h3>
+          <p className="text-[12px] text-text-secondary mt-0.5">
+            {users.length} {users.length === 1 ? 'user' : 'users'}. Edit roles, manage brand/channel access, deactivate accounts.
+          </p>
+        </div>
+        <Button variant="primary" size="sm" onClick={() => { setCreateNotice(null); setCreateOpen(true); }}>
+          + Create user
+        </Button>
       </div>
+
+      {createNotice && (
+        <div className="bg-success-soft border border-success/20 text-success text-xs px-3 py-2 rounded-md flex items-start justify-between gap-3">
+          <span>{createNotice}</span>
+          <button onClick={() => setCreateNotice(null)} className="text-success font-medium flex-shrink-0">×</button>
+        </div>
+      )}
 
       {error && <div className="bg-danger-soft border border-danger/20 text-danger text-xs px-3 py-2 rounded-md">{error}</div>}
 
@@ -206,6 +248,183 @@ export default function UsersTab({ currentUserId }: UsersTabProps) {
             })}
           </div>
         )}
+      </div>
+
+      {createOpen && (
+        <CreateUserModal
+          state={state}
+          busy={createBusy}
+          onClose={() => setCreateOpen(false)}
+          onSubmit={createUser}
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateUserModal({
+  state,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  state: OnboardingState | null;
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (payload: {
+    name: string;
+    email: string;
+    role: 'ADMIN' | 'AGENT';
+    access: Array<{ brand: string; channel: string }>;
+  }) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<'ADMIN' | 'AGENT'>('AGENT');
+  const [picked, setPicked] = useState<Array<{ brand: string; channel: string }>>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  // Group configured rows by brand, same shape as AccessEditor.
+  const byBrand = new Map<string, Array<{ channel: string; display_name: string | null }>>();
+  if (state) {
+    for (const c of state.configured) {
+      const arr = byBrand.get(c.brand) ?? [];
+      arr.push({ channel: c.channel, display_name: c.display_name });
+      byBrand.set(c.brand, arr);
+    }
+  }
+  const brandNameFor = (id: string) => state?.brands.find((b) => b.id === id)?.name ?? id;
+  const sortedBrands = Array.from(byBrand.keys()).sort((a, b) =>
+    brandNameFor(a).localeCompare(brandNameFor(b))
+  );
+
+  function toggle(brand: string, channel: string) {
+    setPicked((prev) => {
+      const exists = prev.some((p) => p.brand === brand && p.channel === channel);
+      return exists
+        ? prev.filter((p) => !(p.brand === brand && p.channel === channel))
+        : [...prev, { brand, channel }];
+    });
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!name.trim()) { setError('Name is required'); return; }
+    if (!email.trim()) { setError('Email is required'); return; }
+    const result = await onSubmit({
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      role,
+      access: role === 'AGENT' ? picked : [],
+    });
+    if (!result.ok) setError(result.error ?? 'Could not create user');
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-elevated rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col border border-border-default"
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border-default">
+          <h2 className="text-base font-semibold text-text-primary">Create user</h2>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary text-xl leading-none" aria-label="Close">×</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          <div>
+            <label className="block text-[11px] font-medium text-text-secondary mb-1">Full name</label>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default placeholder:text-text-muted focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
+              placeholder="Priya Sharma"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-medium text-text-secondary mb-1">Work email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default placeholder:text-text-muted focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
+              placeholder="priya@acceltancy.in"
+            />
+            <p className="mt-1 text-[11px] text-text-muted">
+              They&apos;ll get an email invite — no password is set by you.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-medium text-text-secondary mb-1">Role</label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value as 'ADMIN' | 'AGENT')}
+              className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
+            >
+              <option value="AGENT">Agent</option>
+              <option value="ADMIN">Admin</option>
+            </select>
+          </div>
+
+          {role === 'AGENT' && (
+            <div>
+              <label className="block text-[11px] font-medium text-text-secondary mb-1">Brand & channel access</label>
+              {!state ? (
+                <p className="text-xs text-text-muted">Loading brands…</p>
+              ) : sortedBrands.length === 0 ? (
+                <p className="text-xs text-text-muted">No channels configured anywhere yet. The user can pick later from settings.</p>
+              ) : (
+                <div className="space-y-2">
+                  {sortedBrands.map((brandId) => (
+                    <div key={brandId} className="rounded border border-border-subtle px-3 py-2">
+                      <div className="text-[12px] font-semibold text-text-primary mb-1">{brandNameFor(brandId)}</div>
+                      <div className="flex flex-wrap gap-3">
+                        {byBrand.get(brandId)!.map((c) => {
+                          const on = picked.some((p) => p.brand === brandId && p.channel === c.channel);
+                          return (
+                            <label key={c.channel} className="flex items-center gap-2 text-xs">
+                              <input
+                                type="checkbox"
+                                checked={on}
+                                onChange={() => toggle(brandId, c.channel)}
+                                className="w-3.5 h-3.5"
+                              />
+                              <span className="text-text-default">{CHANNEL_LABELS[c.channel] ?? c.channel}</span>
+                              {c.display_name && (
+                                <span className="text-[11px] text-text-muted truncate max-w-[150px]">· {c.display_name}</span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {role === 'ADMIN' && (
+            <p className="text-xs text-text-muted">Admins automatically see every brand and channel — no access rows needed.</p>
+          )}
+
+          {error && (
+            <div className="bg-danger-soft border border-danger/20 text-danger text-xs px-3 py-2 rounded-md">
+              {error}
+            </div>
+          )}
+        </form>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border-default">
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant="primary" size="sm" onClick={handleSubmit} disabled={busy}>
+            {busy ? 'Sending invite…' : 'Send invite'}
+          </Button>
+        </div>
       </div>
     </div>
   );

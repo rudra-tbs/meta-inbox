@@ -12,19 +12,30 @@ import CommandPalette, { type PaletteAction } from '@/components/CommandPalette'
 export type StatusFilter = 'all' | 'AI' | 'HUMAN' | 'QUALIFIED' | 'MINE' | 'PENDING' | 'SNOOZED';
 
 interface CRMStage { id: number; name: string }
+interface Brand { id: string; name: string }
+interface AssignableUser { id: string; name: string }
 
 interface InboxClientProps {
   currentUser: AppUser;
 }
 
+const ACTIVE_BRAND_STORAGE_KEY = 'inbox.activeBrand';
+
 export default function InboxClient({ currentUser }: InboxClientProps) {
-  const [activeBrand] = useState<string>('TBS');
+  const isAdmin = currentUser.role === 'ADMIN';
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [loadingBrands, setLoadingBrands] = useState(true);
+  const [activeBrand, setActiveBrand] = useState<string>('TBS');
   const [activeChannel, setActiveChannel] = useState<ChannelView>('WA');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [stageFilter, setStageFilter] = useState<number | null>(null);
+  // Admin-only: filter conversations by assignee. Empty string = no filter,
+  // '__unassigned' = literal NULL.
+  const [assigneeFilter, setAssigneeFilter] = useState<string>('');
+  const [agents, setAgents] = useState<AssignableUser[]>([]);
   const [stages, setStages] = useState<CRMStage[]>([]);
   const [refreshingStages, setRefreshingStages] = useState(false);
   const [search, setSearch] = useState('');
@@ -79,6 +90,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
     }
     if (tagFilter) params.set('tag', tagFilter);
     if (stageFilter != null) params.set('stage', String(stageFilter));
+    if (isAdmin && assigneeFilter) params.set('assignee', assigneeFilter);
     if (debouncedSearch) params.set('search', debouncedSearch);
 
     const res = await fetch(`/api/conversations?${params.toString()}`);
@@ -99,7 +111,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
       setConversations(sorted);
     }
     setLoadingConvs(false);
-  }, [activeBrand, activeChannel, statusFilter, tagFilter, stageFilter, debouncedSearch]);
+  }, [activeBrand, activeChannel, statusFilter, tagFilter, stageFilter, assigneeFilter, isAdmin, debouncedSearch]);
 
   // Debounce search so we don't hammer /api/conversations on every keystroke.
   useEffect(() => {
@@ -142,6 +154,54 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
       Notification.requestPermission().catch(() => {});
     }
   }, []);
+
+  // Load the brands the user can switch between. We pick the active brand from
+  // localStorage if it's still valid, otherwise fall back to the first one.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/brands');
+        if (!res.ok) return;
+        const data = (await res.json()) as Brand[];
+        if (cancelled) return;
+        setBrands(data);
+        if (data.length > 0) {
+          const stored =
+            typeof window !== 'undefined'
+              ? window.localStorage.getItem(ACTIVE_BRAND_STORAGE_KEY)
+              : null;
+          const valid = stored && data.some((b) => b.id === stored) ? stored : data[0].id;
+          setActiveBrand(valid);
+        }
+      } finally {
+        if (!cancelled) setLoadingBrands(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Admin-only: load assignable users for the assignee filter dropdown.
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    (async () => {
+      const res = await fetch('/api/users?assignable=true');
+      if (!res.ok) return;
+      const data = (await res.json()) as AssignableUser[];
+      if (!cancelled) setAgents(data);
+    })();
+    return () => { cancelled = true; };
+  }, [isAdmin]);
+
+  function selectBrand(brandId: string) {
+    setActiveBrand(brandId);
+    setSelectedId(null);
+    setAssigneeFilter('');
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(ACTIVE_BRAND_STORAGE_KEY, brandId);
+    }
+  }
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
   useEffect(() => { fetchStages(); }, [fetchStages]);
@@ -390,9 +450,17 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
     },
   ];
 
+  const hasSecondaryFilters = tagsInUse.length > 0 || stages.length > 0 || isAdmin;
+
   return (
     <div className="flex h-screen overflow-hidden bg-elevated">
-      <BrandRail activeBrand={activeBrand} currentUser={currentUser} />
+      <BrandRail
+        brands={brands}
+        activeBrand={activeBrand}
+        onSelectBrand={selectBrand}
+        currentUser={currentUser}
+        loading={loadingBrands}
+      />
 
       <div
         className={`flex flex-col border-r border-border-default bg-elevated
@@ -409,36 +477,52 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
           />
         </div>
 
-        {(tagsInUse.length > 0 || stages.length > 0) && (
-          <div className="flex items-center gap-1 px-3 py-2 border-b border-border-subtle">
-            {tagsInUse.length > 0 && (
-              <select
-                value={tagFilter ?? ''}
-                onChange={(e) => setTagFilter(e.target.value || null)}
-                className="flex-1 text-[11px] text-text-default border border-border-default rounded px-2 py-1 bg-elevated focus:outline-none focus:ring-2 focus:ring-brand/15 focus:border-border-strong"
+        {hasSecondaryFilters && (
+          <div className="flex flex-col gap-1 px-3 py-2 border-b border-border-subtle">
+            <div className="flex items-center gap-1">
+              {tagsInUse.length > 0 && (
+                <select
+                  value={tagFilter ?? ''}
+                  onChange={(e) => setTagFilter(e.target.value || null)}
+                  className="flex-1 text-[11px] text-text-default border border-border-default rounded px-2 py-1 bg-elevated focus:outline-none focus:ring-2 focus:ring-brand/15 focus:border-border-strong"
+                >
+                  <option value="">All tags</option>
+                  {tagsInUse.map((t) => (<option key={t} value={t}>{t}</option>))}
+                </select>
+              )}
+              {stages.length > 0 && (
+                <select
+                  value={stageFilter ?? ''}
+                  onChange={(e) => setStageFilter(e.target.value ? Number(e.target.value) : null)}
+                  className="flex-1 text-[11px] text-text-default border border-border-default rounded px-2 py-1 bg-elevated focus:outline-none focus:ring-2 focus:ring-brand/15 focus:border-border-strong"
+                >
+                  <option value="">All stages</option>
+                  {stages.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
+                </select>
+              )}
+              <button
+                onClick={refreshStagesFromCRM}
+                disabled={refreshingStages}
+                title="Refresh stages from CRM"
+                className="text-[11px] text-text-secondary hover:text-brand px-1.5 py-1 disabled:opacity-50"
               >
-                <option value="">All tags</option>
-                {tagsInUse.map((t) => (<option key={t} value={t}>{t}</option>))}
+                {refreshingStages ? '...' : '↻'}
+              </button>
+            </div>
+            {isAdmin && (
+              <select
+                value={assigneeFilter}
+                onChange={(e) => setAssigneeFilter(e.target.value)}
+                title="Filter by assignee (admin)"
+                className="w-full text-[11px] text-text-default border border-border-default rounded px-2 py-1 bg-elevated focus:outline-none focus:ring-2 focus:ring-brand/15 focus:border-border-strong"
+              >
+                <option value="">All assignees</option>
+                <option value="__unassigned">Unassigned</option>
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
               </select>
             )}
-            {stages.length > 0 && (
-              <select
-                value={stageFilter ?? ''}
-                onChange={(e) => setStageFilter(e.target.value ? Number(e.target.value) : null)}
-                className="flex-1 text-[11px] text-text-default border border-border-default rounded px-2 py-1 bg-elevated focus:outline-none focus:ring-2 focus:ring-brand/15 focus:border-border-strong"
-              >
-                <option value="">All stages</option>
-                {stages.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
-              </select>
-            )}
-            <button
-              onClick={refreshStagesFromCRM}
-              disabled={refreshingStages}
-              title="Refresh stages from CRM"
-              className="text-[11px] text-text-secondary hover:text-brand px-1.5 py-1 disabled:opacity-50"
-            >
-              {refreshingStages ? '...' : '↻'}
-            </button>
           </div>
         )}
 

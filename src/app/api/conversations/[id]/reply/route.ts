@@ -97,6 +97,13 @@ export async function POST(
     }
   }
 
+  // NOTE on AI reactivation:
+  // We DO NOT set manually_set_human=true here. That flag means "operator
+  // explicitly disabled AI", which is set by the /mode toggle route and the
+  // AI handler's ABSTAIN / auto-handoff paths. Just replying keeps the
+  // conversation in HUMAN mode for the 30-day window via last_human_message_at;
+  // after 30 days of silence the AI reactivation in lib/ai-mode.ts kicks in.
+  // Setting it here would block reactivation forever.
   const { error: updateError } = await supabase
     .from('conversations')
     .update({
@@ -107,7 +114,6 @@ export async function POST(
       // RM responded → clear any AI-flagged callback need.
       callback_required: false,
       needs_human_reply: false,
-      manually_set_human: true,
       suggested_reply: null,
       suggested_reply_at: null,
       unread_count: 0,

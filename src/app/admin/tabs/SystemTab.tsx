@@ -5,11 +5,13 @@ import { useEffect, useState } from 'react';
 interface EnvKey { key: string; set: boolean }
 interface EnvGroup { group: string; keys: EnvKey[] }
 interface ConnStatus { ok: boolean; latencyMs: number; error: string | null }
+interface MigrationCheck { key: string; label: string; ok: boolean; detail: string | null }
 
 interface SystemData {
   env: EnvGroup[];
   supabase: ConnStatus;
   crm: ConnStatus;
+  migrations?: MigrationCheck[];
   runtime: { node: string; env: string; region: string | null };
 }
 
@@ -52,6 +54,8 @@ export default function SystemTab() {
   if (!data) return null;
 
   const missingCount = data.env.reduce((acc, g) => acc + g.keys.filter((k) => !k.set).length, 0);
+  const migrations = data.migrations ?? [];
+  const migrationsFailing = migrations.filter((m) => !m.ok).length;
 
   return (
     <div className="space-y-6">
@@ -87,6 +91,38 @@ export default function SystemTab() {
           <p className="mt-2 text-[11px] text-danger">CRM error: {data.crm.error}</p>
         )}
       </div>
+
+      {/* Migration checks */}
+      {migrations.length > 0 && (
+        <div>
+          <div className="flex items-baseline justify-between mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">Database migrations</h3>
+              <p className="text-[12px] text-text-secondary mt-0.5">
+                Verifies that the schema + RPCs the app depends on are present in Supabase.
+              </p>
+            </div>
+            {migrationsFailing > 0 && (
+              <span className="text-[11px] text-danger font-medium">
+                {migrationsFailing} failing
+              </span>
+            )}
+          </div>
+          <div className="rounded-lg border border-border-default bg-elevated overflow-hidden divide-y divide-border-subtle">
+            {migrations.map((m) => (
+              <div key={m.key} className="px-4 py-2.5 flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12px] text-text-default">{m.label}</div>
+                  {!m.ok && m.detail && (
+                    <div className="text-[11px] text-danger mt-0.5 break-words">{m.detail}</div>
+                  )}
+                </div>
+                <StatusPill ok={m.ok} label={m.ok ? 'ok' : 'missing'} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Env vars */}
       <div>

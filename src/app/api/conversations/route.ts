@@ -52,6 +52,10 @@ export async function GET(request: NextRequest) {
   const snoozed = searchParams.get('snoozed') === 'true';
   const tag = searchParams.get('tag');
   const stage = searchParams.get('stage');
+  // Admin-only: filter the inbox by a specific assignee, or '__unassigned'
+  // for conversations with no owner. Non-admins fall back to the standard
+  // per-user access filter below.
+  const assignee = searchParams.get('assignee');
   const rawSearch = searchParams.get('search') ?? '';
   const search = rawSearch ? sanitizeSearch(rawSearch) : '';
 
@@ -98,6 +102,16 @@ export async function GET(request: NextRequest) {
   if (pending) query = query.or('needs_human_reply.eq.true,callback_required.eq.true');
   if (stage) query = query.eq('crm_stage_id', parseInt(stage));
   if (tag) query = query.contains('tags', [tag]);
+
+  // assignee filter is admin-only. Silently ignored for agents — their view
+  // is already constrained by getConversationFilter above.
+  if (assignee && appUser.role === 'ADMIN') {
+    if (assignee === '__unassigned') {
+      query = query.is('assigned_to', null);
+    } else {
+      query = query.eq('assigned_to', assignee);
+    }
+  }
 
   if (search) {
     // Bounded FTS over messages: limit to 500 hits so a popular term doesn't
