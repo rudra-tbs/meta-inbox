@@ -131,7 +131,7 @@ export default function DetailRail({ conversation, open, onClose, onConversation
       {/* Lead snapshot */}
       <Section title="Lead">
         <InfoRow label="City" value={conversation.city} />
-        <InfoRow label="Wedding date" value={conversation.wedding_date} />
+        <InfoRow label="Event date" value={conversation.wedding_date} />
         <InfoRow label="Guests" value={conversation.guest_count} />
         <InfoRow label="Budget" value={conversation.budget_range} />
         <InfoRow label="Service" value={conversation.service_type} />

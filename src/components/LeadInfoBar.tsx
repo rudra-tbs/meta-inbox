@@ -19,7 +19,7 @@ function InfoPill({ icon, label, value }: { icon: string; label: string; value: 
 export default function LeadInfoBar({ conversation }: LeadInfoBarProps) {
   const all: { icon: string; label: string; value: string | null }[] = [
     { icon: '📍', label: 'City',    value: conversation.city },
-    { icon: '💍', label: 'Wedding', value: conversation.wedding_date },
+    { icon: '📅', label: 'Event',   value: conversation.wedding_date },
     { icon: '👥', label: 'Guests',  value: conversation.guest_count },
     { icon: '💰', label: 'Budget',  value: conversation.budget_range },
     { icon: '✨', label: 'Service', value: conversation.service_type },

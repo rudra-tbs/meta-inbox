@@ -163,13 +163,13 @@ export default function PushToCRMModal({
               value={city}
               onChange={(e) => setCity(e.target.value)}
               className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default placeholder:text-text-muted focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
-              placeholder="Wedding city"
+              placeholder="Event city"
             />
           </div>
 
-          {/* Wedding date */}
+          {/* Event date */}
           <div>
-            <label className="block text-[11px] font-medium text-text-secondary mb-1">Wedding date</label>
+            <label className="block text-[11px] font-medium text-text-secondary mb-1">Event date</label>
             <input
               type="date"
               value={weddingDate}

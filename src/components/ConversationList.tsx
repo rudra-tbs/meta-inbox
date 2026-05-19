@@ -22,6 +22,9 @@ interface ConversationListProps {
   onToggleCheck: (id: string) => void;
   onClearChecks: () => void;
   onBulkDone: () => void;
+  // Empty-state hints
+  noBrandsAssigned?: boolean;
+  activeChannelLabel?: string | null;
 }
 
 export default function ConversationList({
@@ -37,6 +40,8 @@ export default function ConversationList({
   onToggleCheck,
   onClearChecks,
   onBulkDone,
+  noBrandsAssigned,
+  activeChannelLabel,
 }: ConversationListProps) {
   const selectionActive = checkedIds.size > 0;
   const checkedConversations = conversations.filter((c) => checkedIds.has(c.id));
@@ -86,7 +91,12 @@ export default function ConversationList({
             ))}
           </div>
         ) : conversations.length === 0 ? (
-          <EmptyConversations search={search} statusFilter={statusFilter} />
+          <EmptyConversations
+            search={search}
+            statusFilter={statusFilter}
+            noBrandsAssigned={!!noBrandsAssigned}
+            activeChannelLabel={activeChannelLabel ?? null}
+          />
         ) : (
           conversations.map((conv) => (
             <ConversationItem
@@ -116,7 +126,17 @@ export default function ConversationList({
   );
 }
 
-function EmptyConversations({ search, statusFilter }: { search: string; statusFilter: StatusFilter }) {
+function EmptyConversations({
+  search,
+  statusFilter,
+  noBrandsAssigned,
+  activeChannelLabel,
+}: {
+  search: string;
+  statusFilter: StatusFilter;
+  noBrandsAssigned: boolean;
+  activeChannelLabel: string | null;
+}) {
   const filtered = !!search || statusFilter !== 'all';
   return (
     <div className="px-6 py-10 flex flex-col items-center text-center">
@@ -125,7 +145,14 @@ function EmptyConversations({ search, statusFilter }: { search: string; statusFi
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
         </svg>
       </div>
-      {filtered ? (
+      {noBrandsAssigned ? (
+        <>
+          <p className="text-sm font-medium text-text-primary">No brands assigned yet</p>
+          <p className="text-[12px] text-text-secondary mt-1 leading-snug max-w-[220px]">
+            Ask an admin to grant you access — they can do it from <strong>/admin → Users</strong>.
+          </p>
+        </>
+      ) : filtered ? (
         <>
           <p className="text-sm font-medium text-text-primary">No conversations match</p>
           <p className="text-[12px] text-text-secondary mt-1 leading-snug">
@@ -135,8 +162,12 @@ function EmptyConversations({ search, statusFilter }: { search: string; statusFi
       ) : (
         <>
           <p className="text-sm font-medium text-text-primary">Waiting for first message</p>
-          <p className="text-[12px] text-text-secondary mt-1 leading-snug max-w-[200px]">
-            When a lead messages your WhatsApp number, the conversation lands here.
+          <p className="text-[12px] text-text-secondary mt-1 leading-snug max-w-[240px]">
+            {activeChannelLabel ? (
+              <>Send a test message to <strong className="text-text-primary">{activeChannelLabel}</strong> to verify the webhook is wired up. New conversations land here.</>
+            ) : (
+              <>When a lead messages your connected number, the conversation lands here.</>
+            )}
           </p>
           <a
             href="/settings"
