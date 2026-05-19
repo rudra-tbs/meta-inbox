@@ -162,7 +162,7 @@ export default function CommandPalette({
             ))
           )}
         </ul>
-        <div className="px-3 py-1.5 border-t border-border-subtle text-[10px] text-text-muted flex items-center justify-between bg-canvas">
+        <div className="hidden md:flex px-3 py-1.5 border-t border-border-subtle text-[10px] text-text-muted items-center justify-between bg-canvas">
           <span>
             <kbd>↑↓</kbd> nav · <kbd>↵</kbd> select · <kbd>esc</kbd> close
           </span>

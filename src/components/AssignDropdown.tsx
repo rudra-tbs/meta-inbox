@@ -26,7 +26,15 @@ export default function AssignDropdown({ conversation, onAssign }: AssignDropdow
 
   async function loadUsers() {
     if (users.length > 0) return;
-    const res = await fetch('/api/users');
+    // Only list users who can actually see this conversation. Prevents an
+    // agent from accidentally orphaning a thread by assigning it to someone
+    // without brand+channel access.
+    const params = new URLSearchParams({
+      assignable: 'true',
+      brand: conversation.brand,
+      channel: conversation.channel,
+    });
+    const res = await fetch(`/api/users?${params.toString()}`);
     if (res.ok) {
       const data = await res.json();
       setUsers(data);

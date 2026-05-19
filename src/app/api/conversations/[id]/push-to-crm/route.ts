@@ -91,10 +91,34 @@ export async function POST(
     console.warn('[Push CRM] Could not resolve creator CRM user:', err);
   }
 
-  // TODO: switch to production pipelines before go-live
-  // Production: TBS → pipeline_id=67, stage_id=339 | RD → pipeline_id=58, stage_id=276
-  const pipeline_id = 113; // TBS Test
-  const stage_id    = 660; // Lead In
+  // Resolve pipeline/stage for this brand. Env-driven so test vs prod is a
+  // deploy-time decision, not a code change.
+  //
+  // Lookup order:
+  //   1. CRM_PIPELINE_<BRAND>_ID + CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID
+  //      (BRAND uppercased, e.g. CRM_PIPELINE_TBS_ID=67)
+  //   2. If the brand string is numeric (post brands_from_pipelines migration),
+  //      use it as the pipeline_id and require CRM_DEFAULT_INITIAL_STAGE_ID.
+  const brandKey = String(conv.brand).toUpperCase();
+  const envPipeline = process.env[`CRM_PIPELINE_${brandKey}_ID`];
+  const envStage = process.env[`CRM_PIPELINE_${brandKey}_INITIAL_STAGE_ID`];
+
+  let pipeline_id: number | null = envPipeline ? parseInt(envPipeline) : null;
+  let stage_id: number | null = envStage ? parseInt(envStage) : null;
+
+  if (!pipeline_id && /^\d+$/.test(String(conv.brand))) {
+    pipeline_id = parseInt(String(conv.brand));
+  }
+  if (!stage_id && process.env.CRM_DEFAULT_INITIAL_STAGE_ID) {
+    stage_id = parseInt(process.env.CRM_DEFAULT_INITIAL_STAGE_ID);
+  }
+
+  if (!pipeline_id || !stage_id) {
+    return NextResponse.json(
+      { error: `CRM pipeline not configured for brand "${conv.brand}". Set CRM_PIPELINE_${brandKey}_ID and CRM_PIPELINE_${brandKey}_INITIAL_STAGE_ID.` },
+      { status: 500 }
+    );
+  }
 
   // Sub-source by channel
   const deal_sub_source = conv.channel === 'IG' ? 'INSTAGRAM' : 'WHATSAPP';
@@ -177,7 +201,7 @@ export async function POST(
   let initialStageName: string | null = null;
   try {
     const stageRows = await queryCRM<{ name: string }[]>(
-      'SELECT name FROM pipeline_stages WHERE id = ? LIMIT 1',
+      'SELECT name FROM stages WHERE id = ? LIMIT 1',
       [stage_id]
     );
     initialStageName = stageRows[0]?.name ?? null;

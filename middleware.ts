@@ -4,12 +4,15 @@ import { NextResponse, type NextRequest } from 'next/server';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Public routes — landing page handles its own auth-redirect server-side
+  // Public routes — landing page handles its own auth-redirect server-side.
+  // /auth/reset-password is reached via the password-recovery email link and
+  // needs to render even before a full session exists.
   if (
     pathname === '/' ||
     pathname === '/login' ||
     pathname === '/signup' ||
     pathname === '/auth/callback' ||
+    pathname === '/auth/reset-password' ||
     pathname === '/api/auth/signup' ||
     pathname === '/api/auth/signout' ||
     pathname.startsWith('/api/webhook')

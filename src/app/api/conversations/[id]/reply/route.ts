@@ -42,7 +42,6 @@ export async function POST(
     return NextResponse.json({ error: 'Message is required' }, { status: 400 });
   }
 
-  // Get conversation
   const { data: conversation, error: convError } = await supabase
     .from('conversations')
     .select('*')
@@ -54,8 +53,10 @@ export async function POST(
   }
 
   const now = new Date().toISOString();
+  const trimmed = message.trim();
 
-  // Insert message first so it shows in UI immediately, then send
+  // Insert as PENDING so the UI shows it immediately. Mark SENT or FAILED
+  // after the WhatsApp call returns.
   const { data: insertedMsg } = await supabase
     .from('messages')
     .insert({
@@ -63,41 +64,69 @@ export async function POST(
       direction: 'OUTBOUND',
       sender: 'HUMAN',
       sender_user_id: appUser.id,
-      content: message.trim(),
+      content: trimmed,
       whatsapp_message_id: null,
+      delivered_status: 'PENDING',
       created_at: now,
     })
     .select('id')
     .single();
 
+  let sendOk = false;
+  let sendError: string | null = null;
+  let waId: string | null = null;
   try {
-    const waId = await sendWhatsAppMessage(conversation.brand, conversation.phone_number, message.trim());
-    if (waId && insertedMsg?.id) {
-      await supabase.from('messages').update({ whatsapp_message_id: waId }).eq('id', insertedMsg.id);
-    }
+    waId = await sendWhatsAppMessage(conversation.brand, conversation.phone_number, trimmed);
+    sendOk = true;
   } catch (err) {
+    sendError = err instanceof Error ? err.message : String(err);
     console.error('[Reply] WhatsApp send failed:', err);
   }
 
-  // Update conversation — manually_set_human=true prevents ai-mode from re-activating AI
+  if (insertedMsg?.id) {
+    if (sendOk) {
+      await supabase
+        .from('messages')
+        .update({ whatsapp_message_id: waId, delivered_status: 'SENT', send_error: null })
+        .eq('id', insertedMsg.id);
+    } else {
+      await supabase
+        .from('messages')
+        .update({ delivered_status: 'FAILED', send_error: sendError })
+        .eq('id', insertedMsg.id);
+    }
+  }
+
+  // NOTE on AI reactivation:
+  // We DO NOT set manually_set_human=true here. That flag means "operator
+  // explicitly disabled AI", which is set by the /mode toggle route and the
+  // AI handler's ABSTAIN / auto-handoff paths. Just replying keeps the
+  // conversation in HUMAN mode for the 30-day window via last_human_message_at;
+  // after 30 days of silence the AI reactivation in lib/ai-mode.ts kicks in.
+  // Setting it here would block reactivation forever.
   const { error: updateError } = await supabase
     .from('conversations')
     .update({
       mode: 'HUMAN',
       last_human_message_at: now,
       last_message_at: now,
+      last_message_preview: trimmed.slice(0, 500),
+      // RM responded → clear any AI-flagged callback need.
+      callback_required: false,
       needs_human_reply: false,
-      manually_set_human: true,
       suggested_reply: null,
       suggested_reply_at: null,
+      unread_count: 0,
       updated_at: now,
     })
     .eq('id', params.id);
 
   if (updateError) {
     console.error(`[Reply] conversation update FAILED for ${params.id}:`, updateError);
-  } else {
-    console.log(`[Reply] conversation ${params.id} → mode=HUMAN, manually_set_human=true, needs_human_reply=false`);
+  }
+
+  if (!sendOk) {
+    return NextResponse.json({ error: 'Message saved but WhatsApp delivery failed', details: sendError }, { status: 502 });
   }
 
   return NextResponse.json({ ok: true });

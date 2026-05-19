@@ -4,7 +4,10 @@ import type { AppUser } from '@/types';
 export async function getUserByAuthId(authId: string): Promise<AppUser | null> {
   const supabase = createSupabaseServer();
   const { data } = await supabase.from('users').select('*').eq('auth_id', authId).maybeSingle();
-  return data ?? null;
+  if (!data) return null;
+  // Treat missing `active` column (pre-migration) as active.
+  if (data.active === false) return null;
+  return data;
 }
 
 // Returns null for admins (no filter), or a filter object for agents

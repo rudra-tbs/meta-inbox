@@ -8,6 +8,7 @@ import ModeToggle from './ModeToggle';
 import AssignDropdown from './AssignDropdown';
 import PushToCRMModal from './PushToCRMModal';
 import DetailRail from './DetailRail';
+import LeadInfoBar from './LeadInfoBar';
 import Button from './ui/Button';
 import Dot from './ui/Dot';
 
@@ -72,8 +73,17 @@ export default function ChatWindow({
   const [showDetail, setShowDetail] = useState(false);
   const [templates, setTemplates] = useState<ReplyTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const update = () => setIsDesktop(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
   const isHumanMode = conversation.mode === 'HUMAN';
   const suggestion = conversation.suggested_reply;
@@ -97,6 +107,7 @@ export default function ChatWindow({
 
   async function handleSend() {
     if (!reply.trim() || sending) return;
+    const wasAIMode = !isHumanMode;
     setSending(true);
     try {
       const res = await fetch(`/api/conversations/${conversation.id}/reply`, {
@@ -107,6 +118,17 @@ export default function ChatWindow({
       if (res.ok) {
         setReply('');
         onMessageSent();
+        // The reply route flips mode to HUMAN server-side. Patch local state
+        // immediately so the UI doesn't keep showing "AI is handling" until
+        // realtime catches up.
+        if (wasAIMode) {
+          onModeChange({
+            ...conversation,
+            mode: 'HUMAN',
+            manually_set_human: true,
+            last_human_message_at: new Date().toISOString(),
+          });
+        }
       }
     } finally {
       setSending(false);
@@ -255,6 +277,11 @@ export default function ChatWindow({
         </div>
       </header>
 
+      {/* Lead snapshot — at-a-glance qualification context, only renders when
+          we have at least one field. RM shouldn't need to open the detail rail
+          just to see city / dates / budget. */}
+      <LeadInfoBar conversation={conversation} />
+
       {/* Callback banner — slim, one line, brand-token colors */}
       {conversation.callback_required && (
         <div className="px-5 py-2 bg-danger-soft border-b border-danger/20 flex items-center justify-between gap-3">
@@ -296,7 +323,12 @@ export default function ChatWindow({
               return (
                 <Fragment key={msg.id}>
                   {showDateSeparator && <DateSeparator date={msg.created_at} />}
-                  <MessageBubble message={msg} contactName={conversation.contact_name} showChannel={showChannelTags} />
+                  <MessageBubble
+                    message={msg}
+                    contactName={conversation.contact_name}
+                    showChannel={showChannelTags}
+                    onRetry={onMessageSent}
+                  />
                 </Fragment>
               );
             })
@@ -342,64 +374,57 @@ export default function ChatWindow({
 
       {/* Input bar */}
       <div className="bg-elevated border-t border-border-default px-5 py-3">
-        {isHumanMode ? (
-          <div className="flex flex-col gap-2">
-            {suggestion && !reply && (
-              <button
-                type="button"
-                onClick={() => setReply(suggestion)}
-                className="text-left bg-warning-soft border border-warning/20 rounded-md px-3 py-2 hover:border-warning/40 transition-colors"
-              >
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-warning">
-                    <Dot tone="warning" /> Suggested reply
-                  </span>
-                  <span className="text-[10px] text-text-muted whitespace-nowrap"><kbd>Tab</kbd> to use</span>
-                </div>
-                <p className="text-xs text-text-default line-clamp-3 whitespace-pre-wrap">{suggestion}</p>
-              </button>
-            )}
-            <div className="flex gap-2 items-end">
-              <textarea
-                ref={textareaRef}
-                value={reply}
-                onChange={(e) => setReply(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={
-                  suggestion
+        <div className="flex flex-col gap-2">
+          {!isHumanMode && (
+            <div className="flex items-center gap-2 bg-canvas border border-border-default rounded-md px-3 py-1.5">
+              <Dot tone="info" />
+              <span className="text-[11px] text-text-secondary">
+                AI is handling this — typing a reply will switch the conversation to Human mode.
+              </span>
+            </div>
+          )}
+          {isHumanMode && suggestion && !reply && (
+            <button
+              type="button"
+              onClick={() => setReply(suggestion)}
+              className="text-left bg-warning-soft border border-warning/20 rounded-md px-3 py-2 hover:border-warning/40 transition-colors"
+            >
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-warning">
+                  <Dot tone="warning" /> Suggested reply
+                </span>
+                <span className="text-[10px] text-text-muted whitespace-nowrap hidden md:inline">
+                  <kbd>Tab</kbd> to use
+                </span>
+              </div>
+              <p className="text-xs text-text-default line-clamp-3 whitespace-pre-wrap">{suggestion}</p>
+            </button>
+          )}
+          <div className="flex gap-2 items-end">
+            <textarea
+              ref={textareaRef}
+              value={reply}
+              onChange={(e) => setReply(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                !isHumanMode
+                  ? isDesktop
+                    ? 'Reply directly (switches AI → Human)'
+                    : 'Reply — switches to Human'
+                  : isDesktop
+                  ? suggestion
                     ? 'Tab to use suggestion · / for templates · Enter to send'
                     : 'Type a message · / for templates · Enter to send'
-                }
-                rows={2}
-                className="flex-1 resize-none text-sm text-text-default placeholder:text-text-muted border border-border-default rounded-md px-3 py-2 focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15 transition-shadow"
-              />
-              <Button variant="primary" size="md" onClick={handleSend} disabled={!reply.trim() || sending}>
-                {sending ? '…' : 'Send'}
-              </Button>
-            </div>
+                  : 'Type a message'
+              }
+              rows={2}
+              className="flex-1 resize-none text-sm text-text-default placeholder:text-text-muted border border-border-default rounded-md px-3 py-2 focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15 transition-shadow"
+            />
+            <Button variant="primary" size="md" onClick={handleSend} disabled={!reply.trim() || sending}>
+              {sending ? '…' : 'Send'}
+            </Button>
           </div>
-        ) : (
-          <div className="flex items-center gap-2 bg-canvas border border-border-default rounded-md px-3 py-2.5">
-            <Dot tone="info" />
-            <span className="text-xs text-text-secondary">AI is handling this conversation</span>
-            <button
-              onClick={async () => {
-                const res = await fetch(`/api/conversations/${conversation.id}/mode`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ mode: 'HUMAN' }),
-                });
-                if (res.ok) {
-                  const updated = await res.json();
-                  onModeChange(updated);
-                }
-              }}
-              className="ml-auto text-xs text-brand hover:text-brand-hover font-medium whitespace-nowrap"
-            >
-              Switch to Human →
-            </button>
-          </div>
-        )}
+        </div>
       </div>
 
       {showCRMModal && (

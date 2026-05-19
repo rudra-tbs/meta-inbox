@@ -15,6 +15,7 @@ export interface AppUser {
   name: string;
   email: string;
   role: UserRole;
+  active?: boolean;
   created_at: string;
 }
 
@@ -106,6 +107,7 @@ export interface Conversation {
   updated_at: string;
   // Joined fields
   last_message?: string | null;
+  last_message_preview?: string | null;
   assigned_user_name?: string | null;
   contact_phone?: string | null;
   contact_instagram_id?: string | null;
@@ -127,6 +129,8 @@ export interface Message {
   sender_user_id: string | null;
   content: string;
   whatsapp_message_id: string | null;
+  delivered_status?: 'PENDING' | 'SENT' | 'FAILED' | null;
+  send_error?: string | null;
   delivered_at: string | null;
   read_at: string | null;
   created_at: string;
