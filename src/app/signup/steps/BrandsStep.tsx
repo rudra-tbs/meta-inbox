@@ -28,7 +28,7 @@ export default function BrandsStep({ brands, selected, onChange, pipelineError, 
       <div>
         <h2 className="text-lg font-semibold text-text-primary">Which brands do you work for?</h2>
         <p className="text-sm text-text-secondary mt-1">
-          You&apos;ll only see conversations for the brands you pick. Pick more than one if applicable.
+          You&apos;ll see conversations across every channel your admin has connected for these brands. Pick more than one if applicable.
         </p>
       </div>
 

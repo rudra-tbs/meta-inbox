@@ -3,14 +3,18 @@
 import { useState } from 'react';
 import Button from '@/components/ui/Button';
 import type { BrandOption } from './BrandsStep';
-import type { ConfiguredChannel, PickedChannel } from './ChannelsStep';
+
+export interface ConfiguredChannel {
+  brand: string;
+  channel: string;
+  display_name: string | null;
+}
 
 interface SummaryStepProps {
   user: { name: string; email: string };
   brands: BrandOption[];
   selectedBrands: string[];
   configured: ConfiguredChannel[];
-  picked: PickedChannel[];
   onBack: () => void;
   onFinish: () => void;
 }
@@ -20,7 +24,6 @@ export default function SummaryStep({
   brands,
   selectedBrands,
   configured,
-  picked,
   onBack,
   onFinish,
 }: SummaryStepProps) {
@@ -29,6 +32,11 @@ export default function SummaryStep({
 
   const channelLabel = (channel: string) => (channel === 'WA' ? 'WhatsApp' : 'Instagram DMs');
 
+  // What channels the agent will inherit — every configured channel on every
+  // brand they picked. We show this so they understand what they're being
+  // granted access to before clicking Finish.
+  const inheritedChannels = configured.filter((c) => selectedBrands.includes(c.brand));
+
   async function handleFinish() {
     setSubmitting(true);
     setError(null);
@@ -36,7 +44,7 @@ export default function SummaryStep({
       const res = await fetch('/api/onboarding/access', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ access: picked }),
+        body: JSON.stringify({ brands: selectedBrands }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -74,18 +82,19 @@ export default function SummaryStep({
           ))}
       </SummaryCard>
 
-      <SummaryCard title={`Channels you'll see (${picked.length})`}>
-        {picked.length === 0 ? (
-          <p className="text-xs text-text-muted">No channels selected.</p>
+      <SummaryCard title={`Channels you'll see (${inheritedChannels.length})`}>
+        {inheritedChannels.length === 0 ? (
+          <p className="text-xs text-text-muted">
+            None of your picked brands have channels configured yet. An admin will need to connect one before any conversations land in your inbox.
+          </p>
         ) : (
-          picked.map((p) => {
-            const cfg = configured.find((c) => c.brand === p.brand && c.channel === p.channel);
-            const brand = brands.find((b) => b.id === p.brand);
+          inheritedChannels.map((c) => {
+            const brand = brands.find((b) => b.id === c.brand);
             return (
               <Row
-                key={`${p.brand}-${p.channel}`}
-                label={`${brand?.name ?? p.brand} · ${channelLabel(p.channel)}`}
-                value={cfg?.display_name ?? '—'}
+                key={`${c.brand}-${c.channel}`}
+                label={`${brand?.name ?? c.brand} · ${channelLabel(c.channel)}`}
+                value={c.display_name ?? '—'}
               />
             );
           })
