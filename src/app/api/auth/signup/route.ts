@@ -45,15 +45,48 @@ export async function POST(request: NextRequest) {
 
   const serviceClient = createServerClient();
 
-  // Reject if a users row OR an auth user with this email already exists.
   const { data: existingUser } = await serviceClient.from('users').select('id').eq('email', email).maybeSingle();
   if (existingUser) {
     return NextResponse.json({ error: 'An account with this email already exists. Sign in instead.' }, { status: 409 });
   }
 
-  // Use the anon client's signUp so Supabase sends the confirmation email automatically.
-  // The user is NOT signed in until they click the email link → /auth/callback exchanges
-  // the code for a session and creates the users row.
+  // Auto-confirm the auth user. Email verification is intentionally skipped so
+  // new agents can complete onboarding in one sitting. If we ever want to put
+  // verification back, flip email_confirm to false (or switch to signUp) and
+  // restore the "Check your email" screen in SignupClient.
+  const { data: created, error: createErr } = await serviceClient.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { name },
+  });
+
+  if (createErr || !created.user) {
+    const msg = createErr?.message ?? 'Could not create account';
+    // Supabase returns "already registered" if the auth.users row exists even
+    // when our public.users row doesn't (i.e. an orphan on the auth side).
+    const status = /already/i.test(msg) ? 409 : 500;
+    return NextResponse.json({ error: msg }, { status });
+  }
+
+  // Insert the public.users row now so subsequent onboarding requests can find
+  // it via auth_id. If this fails we roll back the auth user so the email
+  // doesn't get stuck in a half-created state.
+  const { error: insertErr } = await serviceClient.from('users').insert({
+    auth_id: created.user.id,
+    name,
+    email,
+    role: 'AGENT',
+  });
+
+  if (insertErr) {
+    await serviceClient.auth.admin.deleteUser(created.user.id).catch(() => {});
+    return NextResponse.json({ error: insertErr.message }, { status: 500 });
+  }
+
+  // Sign the user in immediately. The SSR cookie adapter writes the session
+  // cookies onto the response so the client lands on /signup already
+  // authenticated and can call /api/onboarding/* without an extra round-trip.
   const cookieStore = cookies();
   const supabaseAnon = createSupabaseSSR(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -70,32 +103,15 @@ export async function POST(request: NextRequest) {
     }
   );
 
-  const origin = request.headers.get('origin') ?? process.env.NEXT_PUBLIC_APP_URL ?? '';
-  const redirectTo = `${origin}/auth/callback`;
-
-  const { data: signUpData, error: signUpError } = await supabaseAnon.auth.signUp({
-    email,
-    password,
-    options: {
-      emailRedirectTo: redirectTo,
-      data: { name },
-    },
-  });
-
-  if (signUpError) {
-    // Supabase returns the same error message ("User already registered") for both new and
-    // existing-unconfirmed cases. Surface a useful prompt either way.
-    const msg = signUpError.message ?? 'Could not create account';
-    const status = /already/i.test(msg) ? 409 : 500;
-    return NextResponse.json({ error: msg }, { status });
+  const { error: signInErr } = await supabaseAnon.auth.signInWithPassword({ email, password });
+  if (signInErr) {
+    // Account is created but auto-sign-in failed — surface it so the client
+    // can fall back to /login instead of looping.
+    return NextResponse.json(
+      { signedIn: false, error: signInErr.message },
+      { status: 201 }
+    );
   }
 
-  if (!signUpData.user) {
-    return NextResponse.json({ error: 'Signup did not return a user' }, { status: 500 });
-  }
-
-  return NextResponse.json({
-    awaitingVerification: true,
-    email,
-  }, { status: 201 });
+  return NextResponse.json({ signedIn: true, name, email }, { status: 201 });
 }
