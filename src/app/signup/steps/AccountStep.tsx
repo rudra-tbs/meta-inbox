@@ -5,7 +5,8 @@ import Button from '@/components/ui/Button';
 
 interface AccountStepProps {
   initial: { name: string; email: string };
-  onAwaitingVerification: (email: string) => void;
+  onAccountCreated: (user: { name: string; email: string }) => void;
+  onFallbackToLogin: (email: string, error?: string) => void;
 }
 
 const ALLOWED_DOMAINS = ['acceltancy.in', 'thebrideside.in'];
@@ -24,7 +25,7 @@ function isAllowedDomain(email: string): boolean {
   return ALLOWED_DOMAINS.includes(d);
 }
 
-export default function AccountStep({ initial, onAwaitingVerification }: AccountStepProps) {
+export default function AccountStep({ initial, onAccountCreated, onFallbackToLogin }: AccountStepProps) {
   const [name, setName] = useState(initial.name);
   const [email, setEmail] = useState(initial.email);
   const [password, setPassword] = useState('');
@@ -64,7 +65,14 @@ export default function AccountStep({ initial, onAwaitingVerification }: Account
         setServerError(data?.error ?? 'Could not create account');
         return;
       }
-      onAwaitingVerification(data?.email ?? email.trim().toLowerCase());
+      const finalEmail = (data?.email as string | undefined) ?? email.trim().toLowerCase();
+      const finalName = (data?.name as string | undefined) ?? name.trim();
+      if (data?.signedIn === false) {
+        // Account was created but auto-sign-in failed; nudge them to /login.
+        onFallbackToLogin(finalEmail, data?.error as string | undefined);
+        return;
+      }
+      onAccountCreated({ name: finalName, email: finalEmail });
     } catch {
       setServerError('Network error. Please try again.');
     } finally {
