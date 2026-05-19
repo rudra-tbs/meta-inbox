@@ -113,7 +113,7 @@ function Hero() {
               </Link>
             </div>
             <p className="mt-5 text-[12px] text-text-muted">
-              For team members at The Bride Side, Revaah Decor, and the rest of Acceltancy&apos;s wedding brands.
+              For team members across Acceltancy&apos;s brands.
             </p>
           </div>
 
@@ -144,8 +144,8 @@ function InboxMockup() {
           {/* Brand rail */}
           <div className="w-10 bg-inverse flex flex-col items-center py-2 gap-2">
             <div className="w-6 h-6 rounded-md bg-brand flex items-center justify-center text-[10px] font-bold text-text-inverse">A</div>
-            <div className="w-7 h-7 rounded-md bg-elevated text-[10px] font-bold text-text-primary flex items-center justify-center shadow">TBS</div>
-            <div className="w-7 h-7 rounded-md text-[10px] font-bold text-white/40 flex items-center justify-center">RD</div>
+            <div className="w-7 h-7 rounded-md bg-elevated text-[10px] font-bold text-text-primary flex items-center justify-center shadow">B1</div>
+            <div className="w-7 h-7 rounded-md text-[10px] font-bold text-white/40 flex items-center justify-center">B2</div>
           </div>
 
           {/* Conversation list */}
@@ -308,7 +308,7 @@ function Features() {
         <Feature
           icon={<BrandIcon />}
           title="Multi-brand from one inbox"
-          body="Whether you work on The Bride Side, Revaah Decor, or both, you only see the brands you're assigned to. Admins can grant or revoke access in Settings."
+          body="You only see the brands you're assigned to. Admins can grant or revoke access in Settings, and onboarding a new brand is a one-time setup."
         />
         <Feature
           icon={<ChannelIcon />}

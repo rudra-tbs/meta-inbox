@@ -1,6 +1,6 @@
 // Brand identifier — corresponds to a CRM pipeline id (stored as text).
-// Historically this was a 'TBS' | 'RD' enum; the constraint has been
-// dropped and we now accept any pipeline id string.
+// Any pipeline id string is accepted; the set of valid brands is whichever
+// pipelines exist in the CRM and have a brand_channels row configured.
 export type Brand = string;
 export type Channel = 'WA' | 'IG';
 export type ChannelView = Channel | 'ALL';
@@ -155,7 +155,6 @@ export const SNOOZE_PRESETS: SnoozePreset[] = [
 ];
 
 export interface QualificationData {
-  brand: string;
   city: string | null;
   wedding_date: string | null;
   guest_count: string | null;

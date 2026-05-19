@@ -88,8 +88,9 @@ export default function PipelinesTab() {
           byBrand.set(b.id, { brand: b.id, name: b.name, mapping: null });
         }
       }
-      // Legacy brand strings still in brand_channels (e.g. "TBS") that aren't
-      // in the current CRM pipeline list — keep them visible.
+      // Brand strings present in brand_channels but not in the current CRM
+      // pipeline list (e.g. orphaned legacy rows) — keep them visible so an
+      // admin can clean them up.
       configuredBrands.forEach((cb) => {
         if (!byBrand.has(cb)) {
           byBrand.set(cb, { brand: cb, name: cb, mapping: null });

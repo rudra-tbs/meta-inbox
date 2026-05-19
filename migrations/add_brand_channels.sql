@@ -8,7 +8,9 @@
 
 create table if not exists brand_channels (
   id uuid primary key default gen_random_uuid(),
-  brand text check (brand in ('TBS', 'RD')) not null,
+  -- brand is a CRM pipeline id (stored as text). No enum here so onboarding a
+  -- new brand never requires a schema migration.
+  brand text not null,
   channel text check (channel in ('WA', 'IG')) not null,
 
   -- Provider identifier. WA: Meta phone_number_id. IG: instagram account id.
@@ -17,7 +19,7 @@ create table if not exists brand_channels (
   -- Long-lived access token used to send messages for this brand+channel.
   access_token text not null,
 
-  -- Human label shown in the UI ("+91 98... TBS WhatsApp", "@thebrideside").
+  -- Human label shown in the UI (e.g. "+91 98... WhatsApp", "@handle").
   display_name text,
 
   configured_by_user_id uuid references users(id) on delete set null,

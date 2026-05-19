@@ -42,7 +42,10 @@ export async function GET(request: NextRequest) {
   if (!appUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
-  const brand = searchParams.get('brand') || 'TBS';
+  const brand = searchParams.get('brand');
+  if (!brand) {
+    return NextResponse.json({ error: 'brand query param is required' }, { status: 400 });
+  }
   const channel = searchParams.get('channel') || 'WA';
   const includeAllChannels = channel === 'ALL';
   const mode = searchParams.get('mode');

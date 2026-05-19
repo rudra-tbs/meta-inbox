@@ -19,10 +19,10 @@ interface BrandOut {
 }
 
 // Returns the list of brands the current user can switch between in the inbox.
-// - Admins: every brand that has at least one configured channel (DB or legacy env).
+// - Admins: every brand that has at least one configured channel.
 // - Agents: brands present in their user_access rows.
-// The "name" is resolved via the CRM pipelines table when possible; falls back
-// to the raw brand id (e.g. legacy "TBS") if no match.
+// The "name" is resolved via the CRM pipelines table; falls back to the raw
+// brand id when no matching pipeline exists (e.g. orphaned legacy rows).
 export async function GET() {
   const cookieStore = cookies();
   const supabaseAuth = createSupabaseSSR(
@@ -65,7 +65,7 @@ export async function GET() {
   }
 
   // Look up display names from CRM pipelines for numeric ids. Non-numeric
-  // brand ids (e.g. legacy "TBS") fall through and use the id as the label.
+  // brand ids fall through and use the id as the label.
   const numericIds = allowedBrandIds
     .filter((id) => /^\d+$/.test(id))
     .map((id) => parseInt(id));
@@ -84,16 +84,10 @@ export async function GET() {
     }
   }
 
-  // Legacy human-friendly labels for the pre-pipeline brand strings.
-  const legacyLabels: Record<string, string> = {
-    TBS: 'The Bride Side',
-    RD: 'Revaah Decor',
-  };
-
   const out: BrandOut[] = allowedBrandIds
     .map((id) => ({
       id,
-      name: nameById.get(id) ?? legacyLabels[id] ?? id,
+      name: nameById.get(id) ?? id,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 

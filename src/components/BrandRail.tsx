@@ -18,7 +18,7 @@ interface BrandRailProps {
 }
 
 function shortLabel(brand: Brand): string {
-  // Initials for multi-word names ("The Bride Side" → "TBS"), else first 3 chars.
+  // Initials for multi-word names, else first 3 chars of single-word names.
   const parts = brand.name.trim().split(/\s+/);
   if (parts.length >= 2) {
     return parts
