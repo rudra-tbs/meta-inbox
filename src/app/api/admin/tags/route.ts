@@ -31,7 +31,8 @@ async function requireAdmin() {
 
 // Same canonical form the conversations PATCH route normalizes against —
 // lowercase, trimmed, # stripped if the admin paste-includes it.
-export function normalizeTagName(raw: string): string {
+// Kept local: Next.js App Router rejects non-handler exports from route files.
+function normalizeTagName(raw: string): string {
   return raw.trim().toLowerCase().replace(/^#/, '');
 }
 
