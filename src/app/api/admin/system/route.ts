@@ -410,5 +410,28 @@ async function runMigrationChecks(): Promise<MigrationCheck[]> {
     });
   }
 
+  // 10. RLS helper presence — we probe public.is_admin() because it's created
+  // only by the RLS migration. The function returns false under the service
+  // role (no auth.uid()), but that's fine; we just check it exists.
+  try {
+    const { error } = await supabase.rpc('is_admin');
+    const missing = !!error && /Could not find the function|function .* does not exist/i.test(error.message ?? '');
+    checks.push({
+      key: 'rls_enabled',
+      label: 'Row-Level Security policies on data tables',
+      ok: !missing,
+      detail: missing
+        ? 'Missing — run migrations/2026_05_rls.sql to enable RLS + policies'
+        : null,
+    });
+  } catch (err) {
+    checks.push({
+      key: 'rls_enabled',
+      label: 'Row-Level Security policies on data tables',
+      ok: false,
+      detail: err instanceof Error ? err.message : 'probe failed',
+    });
+  }
+
   return checks;
 }
