@@ -5,6 +5,7 @@ import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { findOrCreateContact, updateContactFromQualification } from '@/lib/contact-merge';
 import { getBrandSystemPrompt } from '@/lib/brand-contexts';
 import { logEvent } from '@/lib/activity';
+import { extractCleanText, extractQualData } from '@/lib/ai-response';
 
 function stripThinkingBlocks(text: string): string {
   return text
@@ -12,19 +13,6 @@ function stripThinkingBlocks(text: string): string {
     .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
     .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
     .trim();
-}
-
-// Strip the qualification_data block (and anything after it) from the clean
-// reply that gets sent to the lead. We rely on the explicit tag boundary so
-// conversational text containing { } is not corrupted.
-function extractCleanText(raw: string): string {
-  const tagSplit = raw.split('<qualification_data>');
-  if (tagSplit.length > 1) return tagSplit[0].trim();
-  // No tag — try to strip a trailing JSON object only if it sits at the very
-  // end of the message and looks like the qualification payload.
-  const trailing = raw.match(/\s*(\{[\s\S]*"brand"[\s\S]*\})\s*$/);
-  if (trailing) return raw.slice(0, raw.length - trailing[0].length).trim();
-  return raw.trim();
 }
 
 const CALLBACK_PHRASES = [
@@ -140,19 +128,9 @@ export async function handleAIResponse(
   }
 
   const cleanText = extractCleanText(rawAIResponse);
-
-  const qualMatch =
-    rawAIResponse.match(/<qualification_data>([\s\S]*?)<\/qualification_data>/) ??
-    rawAIResponse.match(/(\{[\s\S]*"is_qualified"[\s\S]*\})/);
-  const qualJson = qualMatch ? qualMatch[1].trim() : null;
-
-  let qualData: QualificationData | null = null;
-  if (qualJson) {
-    try {
-      qualData = JSON.parse(qualJson) as QualificationData;
-    } catch {
-      console.warn(`[AI Handler] qual_data JSON parse failed for ${conversation.id}`);
-    }
+  const qualData: QualificationData | null = extractQualData(rawAIResponse);
+  if (!qualData && /qualification_data/.test(rawAIResponse)) {
+    console.warn(`[AI Handler] qual_data parse failed for ${conversation.id}`);
   }
 
   const triggersCallback = detectCallback(cleanText, inboundMessage);
