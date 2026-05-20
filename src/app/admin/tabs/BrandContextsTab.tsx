@@ -215,8 +215,45 @@ function Editor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Preview state — admins paste a sample lead message, click Run, see the
+  // actual AI output against the *unsaved* draft prompt so they can iterate
+  // without shipping bad prompts to real conversations.
+  const [sampleMessage, setSampleMessage] = useState('Hi, mujhe apni shaadi plan karwani hai');
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{
+    raw: string;
+    clean_text: string | null;
+    qual_data: Record<string, unknown> | null;
+    abstained: boolean;
+    latency_ms: number;
+  } | null>(null);
+
   const dirty = text !== initial;
   const tooLong = text.length > 20000;
+
+  async function runPreview() {
+    setPreviewError(null);
+    setPreview(null);
+    setPreviewBusy(true);
+    try {
+      const res = await fetch('/api/admin/brand-contexts/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ system_prompt: text, user_message: sampleMessage }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPreviewError(data?.error ?? 'Preview failed');
+        return;
+      }
+      setPreview(data);
+    } catch {
+      setPreviewError('Network error');
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
 
   async function save() {
     setError(null);
@@ -276,6 +313,78 @@ function Editor({
           {text.length.toLocaleString()} / 20,000 characters
         </span>
         {error && <span className="text-danger">{error}</span>}
+      </div>
+
+      {/* Preview: dry-run the current draft prompt against a sample message
+          without saving. Hits the LLM each click so token cost is real, but
+          much cheaper than shipping a bad prompt to live leads. */}
+      <div className="rounded-lg border border-border-default bg-canvas p-3 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="text-[11px] font-semibold text-text-primary">Preview</div>
+          <span className="text-[10px] text-text-muted">runs the unsaved draft above</span>
+        </div>
+        <div>
+          <label className="block text-[10px] font-medium text-text-secondary mb-1">Sample lead message</label>
+          <textarea
+            value={sampleMessage}
+            onChange={(e) => setSampleMessage(e.target.value)}
+            rows={2}
+            className="w-full text-[12px] px-2.5 py-1.5 border border-border-default rounded bg-elevated text-text-default focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
+            placeholder="e.g. Hi, mujhe apni shaadi plan karwani hai"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={runPreview}
+            disabled={previewBusy || !sampleMessage.trim() || tooLong}
+          >
+            {previewBusy ? 'Running…' : 'Run preview'}
+          </Button>
+          {preview && !previewBusy && (
+            <span className="text-[10px] text-text-muted">
+              {preview.latency_ms}ms · {preview.abstained ? 'ABSTAIN' : preview.qual_data?.is_qualified ? 'Qualified ✓' : 'Not yet qualified'}
+            </span>
+          )}
+        </div>
+
+        {previewError && (
+          <div className="bg-danger-soft border border-danger/20 text-danger text-[11px] px-2.5 py-1.5 rounded">
+            {previewError}
+          </div>
+        )}
+
+        {preview && (
+          <div className="space-y-2 pt-2 border-t border-border-subtle">
+            {preview.abstained ? (
+              <div className="bg-warning-soft border border-warning/20 text-warning text-[12px] px-3 py-2 rounded">
+                AI returned <strong>ABSTAIN</strong> — would escalate to human without sending anything.
+              </div>
+            ) : (
+              <>
+                <div>
+                  <div className="text-[10px] font-medium text-text-secondary mb-1">Reply the lead would see</div>
+                  <div className="bg-brand-tint text-text-primary text-[12px] rounded-md px-3 py-2 leading-relaxed whitespace-pre-wrap">
+                    {preview.clean_text || <span className="text-text-muted italic">empty reply</span>}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-medium text-text-secondary mb-1">Parsed qualification_data</div>
+                  <pre className="bg-elevated border border-border-default text-text-default text-[11px] font-mono rounded-md px-3 py-2 overflow-x-auto leading-snug">
+{preview.qual_data ? JSON.stringify(preview.qual_data, null, 2) : '— none —'}
+                  </pre>
+                </div>
+              </>
+            )}
+            <details className="text-[10px] text-text-muted">
+              <summary className="cursor-pointer hover:text-text-secondary">Raw LLM output</summary>
+              <pre className="mt-1.5 bg-elevated border border-border-default text-text-default text-[10px] font-mono rounded p-2 overflow-x-auto whitespace-pre-wrap">
+{preview.raw}
+              </pre>
+            </details>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-2">

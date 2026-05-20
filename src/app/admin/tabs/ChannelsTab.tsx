@@ -340,8 +340,8 @@ function ConnectChannelModal({
               <ChannelButton active={channel === 'IG'} onClick={() => setChannel('IG')}>Instagram DMs</ChannelButton>
             </div>
             {channel === 'IG' && (
-              <p className="text-[11px] text-warning mt-1.5">
-                Instagram sending isn&apos;t fully wired up yet — credentials will be stored so we don&apos;t lose them, but inbound IG routing requires Phase 2.
+              <p className="text-[11px] text-text-muted mt-1.5">
+                Make sure Instagram Messaging is enabled on the IG Business Account in Meta Business Manager and the webhook subscription is active for the <code className="font-mono">instagram</code> object.
               </p>
             )}
           </div>

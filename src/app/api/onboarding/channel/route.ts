@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
 import { fetchWhatsAppNumberInfo } from '@/lib/whatsapp';
+import { fetchInstagramAccountInfo } from '@/lib/instagram';
 import { logAdminEvent } from '@/lib/admin-events';
 import type { Channel } from '@/types';
 
@@ -60,10 +61,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Could not verify with Meta: ${msg}` }, { status: 400 });
     }
   } else {
-    // IG validation is out of scope for Phase 1 — record the credentials but
-    // mark them with a placeholder display name. Sending IG messages is not
-    // yet wired up; storing the credentials means we don't lose them.
-    displayName = `Instagram (${externalAccountId})`;
+    // IG validation hits the Graph API the same way WA does — confirms the
+    // token is alive AND that it has access to this IG Business Account.
+    try {
+      const info = await fetchInstagramAccountInfo(externalAccountId, accessToken);
+      displayName = info.display_name;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to verify Instagram credentials with Meta';
+      return NextResponse.json({ error: `Could not verify with Meta: ${msg}` }, { status: 400 });
+    }
   }
 
   const supabase = createServerClient();

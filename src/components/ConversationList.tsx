@@ -46,7 +46,7 @@ export default function ConversationList({
   const selectionActive = checkedIds.size > 0;
   const checkedConversations = conversations.filter((c) => checkedIds.has(c.id));
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div data-tour="conversation-list" className="flex flex-col flex-1 overflow-hidden">
       {/* Search */}
       <div className="px-3 py-2">
         <div className="relative">

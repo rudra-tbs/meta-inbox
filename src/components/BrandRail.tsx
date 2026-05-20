@@ -43,7 +43,7 @@ export default function BrandRail({
   const isAdmin = currentUser.role === 'ADMIN';
 
   return (
-    <div className="w-[52px] bg-inverse flex flex-col items-center py-3 gap-2 h-screen">
+    <div data-tour="brand-rail" className="w-[52px] bg-inverse flex flex-col items-center py-3 gap-2 h-screen">
       {/* Monogram */}
       <div className="w-9 h-9 bg-brand rounded-full flex items-center justify-center mb-2 flex-shrink-0">
         <span className="text-text-inverse font-bold text-base">A</span>
