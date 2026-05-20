@@ -246,7 +246,9 @@ export default function ChatWindow({
         </div>
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <ModeToggle conversation={conversation} onToggle={onModeChange} />
+          <div data-tour="mode-toggle">
+            <ModeToggle conversation={conversation} onToggle={onModeChange} />
+          </div>
           <AssignDropdown conversation={conversation} onAssign={onAssign} />
           <div className="relative" ref={snoozeWrapperRef}>
             <Button
@@ -292,7 +294,7 @@ export default function ChatWindow({
               <Dot tone="success" /> In CRM
             </span>
           ) : (
-            <Button variant="primary" size="sm" onClick={() => setShowCRMModal(true)} className="ml-1">
+            <Button variant="primary" size="sm" onClick={() => setShowCRMModal(true)} className="ml-1" data-tour="push-crm">
               Push to CRM
             </Button>
           )}

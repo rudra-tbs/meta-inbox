@@ -8,6 +8,7 @@ import ChannelTabs from '@/components/ChannelTabs';
 import ConversationList from '@/components/ConversationList';
 import ChatWindow from '@/components/ChatWindow';
 import CommandPalette, { type PaletteAction } from '@/components/CommandPalette';
+import WelcomeTour from '@/components/WelcomeTour';
 
 export type StatusFilter = 'all' | 'AI' | 'HUMAN' | 'QUALIFIED' | 'MINE' | 'PENDING' | 'SNOOZED';
 
@@ -506,6 +507,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-elevated">
+      <WelcomeTour userName={currentUser.name} />
       <BrandRail
         brands={brands}
         activeBrand={activeBrand}
