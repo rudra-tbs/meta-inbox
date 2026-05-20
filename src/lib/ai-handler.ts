@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Conversation, QualificationData, Brand } from '@/types';
 import { callLLM } from '@/lib/llm';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendInstagramMessage } from '@/lib/instagram';
 import { findOrCreateContact, updateContactFromQualification } from '@/lib/contact-merge';
 import { getBrandSystemPrompt } from '@/lib/brand-contexts';
 import { logEvent } from '@/lib/activity';
@@ -198,11 +199,15 @@ export async function handleAIResponse(
   let sendError: string | null = null;
   let waId: string | null = null;
   try {
-    waId = await sendWhatsAppMessage(conversation.brand, conversation.phone_number, cleanText);
+    if (conversation.channel === 'IG') {
+      waId = await sendInstagramMessage(conversation.brand, conversation.phone_number, cleanText);
+    } else {
+      waId = await sendWhatsAppMessage(conversation.brand, conversation.phone_number, cleanText);
+    }
     sendOk = true;
   } catch (err) {
     sendError = err instanceof Error ? err.message : String(err);
-    console.error('WhatsApp delivery failed (reply saved to DB):', err);
+    console.error(`${conversation.channel} delivery failed (reply saved to DB):`, err);
   }
 
   if (insertedMsg?.id) {

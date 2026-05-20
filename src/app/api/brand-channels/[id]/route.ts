@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
 import { fetchWhatsAppNumberInfo } from '@/lib/whatsapp';
+import { fetchInstagramAccountInfo } from '@/lib/instagram';
 import { logAdminEvent } from '@/lib/admin-events';
 
 async function requireAdmin() {
@@ -66,6 +67,16 @@ export async function PATCH(
         updates.display_name = info.verified_name
           ? `${info.display_phone_number} (${info.verified_name})`
           : info.display_phone_number;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Meta rejected the credentials';
+        return NextResponse.json({ error: `Could not verify with Meta: ${msg}` }, { status: 400 });
+      }
+    } else if (existing.channel === 'IG') {
+      try {
+        const info = await fetchInstagramAccountInfo(accountId, token);
+        updates.external_account_id = accountId;
+        updates.access_token = token;
+        updates.display_name = info.display_name;
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Meta rejected the credentials';
         return NextResponse.json({ error: `Could not verify with Meta: ${msg}` }, { status: 400 });

@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendInstagramMessage } from '@/lib/instagram';
 
 export async function POST(
   request: NextRequest,
@@ -76,11 +77,17 @@ export async function POST(
   let sendError: string | null = null;
   let waId: string | null = null;
   try {
-    waId = await sendWhatsAppMessage(conversation.brand, conversation.phone_number, trimmed);
+    if (conversation.channel === 'IG') {
+      // IG conversations store the IG-scoped sender id in phone_number; we
+      // re-use the same column instead of branching the schema.
+      waId = await sendInstagramMessage(conversation.brand, conversation.phone_number, trimmed);
+    } else {
+      waId = await sendWhatsAppMessage(conversation.brand, conversation.phone_number, trimmed);
+    }
     sendOk = true;
   } catch (err) {
     sendError = err instanceof Error ? err.message : String(err);
-    console.error('[Reply] WhatsApp send failed:', err);
+    console.error(`[Reply] ${conversation.channel} send failed:`, err);
   }
 
   if (insertedMsg?.id) {
