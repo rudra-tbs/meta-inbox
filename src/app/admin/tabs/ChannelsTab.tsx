@@ -8,12 +8,13 @@ interface BrandChannelRow {
   brand: string;
   channel: string;
   external_account_id: string;
-  access_token_preview: string;
   display_name: string | null;
   configured_at: string;
   updated_at: string;
   configured_by_name: string | null;
   configured_by_email: string | null;
+  token_env_key: string;
+  token_env_set: boolean;
 }
 
 interface OnboardingBrand { id: string; name: string; subtitle: string }
@@ -147,7 +148,6 @@ function ChannelRow({
   onDelete: () => void;
 }) {
   const [accountId, setAccountId] = useState(row.external_account_id);
-  const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -157,7 +157,6 @@ function ChannelRow({
     try {
       const payload: Record<string, string> = {};
       if (accountId.trim() !== row.external_account_id) payload.external_account_id = accountId.trim();
-      if (token.trim()) payload.access_token = token.trim();
       if (Object.keys(payload).length === 0) {
         setError('Nothing to update.');
         return;
@@ -190,7 +189,17 @@ function ChannelRow({
           </div>
           <div className="text-[11px] text-text-muted mt-1 space-y-0.5">
             <div>Account ID: <span className="font-mono">{row.external_account_id}</span></div>
-            <div>Token: <span className="font-mono">{row.access_token_preview}</span></div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span>Token:</span>
+              <span className="font-mono">{row.token_env_key}</span>
+              <span className={`inline-flex items-center gap-1 px-1.5 py-0 rounded border ${
+                row.token_env_set
+                  ? 'bg-success-soft text-success border-success/20'
+                  : 'bg-danger-soft text-danger border-danger/20'
+              }`}>
+                {row.token_env_set ? 'env set' : 'env missing'}
+              </span>
+            </div>
             <div>
               Configured {new Date(row.configured_at).toLocaleDateString()} by {row.configured_by_name ?? 'unknown'}
               {row.updated_at && row.updated_at !== row.configured_at && (
@@ -217,17 +226,12 @@ function ChannelRow({
               className="w-full px-3 py-2 border border-border-default rounded-md text-sm text-text-default font-mono focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
             />
           </div>
-          <div>
-            <label className="block text-[11px] font-medium text-text-default mb-1">Access token</label>
-            <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Leave blank to keep current"
-              className="w-full px-3 py-2 border border-border-default rounded-md text-sm text-text-default focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
-            />
-            <p className="text-[11px] text-text-muted mt-1">
-              Re-validated against Meta before saving.
+          <div className="rounded-md border border-border-default bg-canvas p-3 text-[11px] text-text-secondary">
+            <p className="font-medium text-text-default mb-1">Access token</p>
+            <p>
+              Tokens live in environment variables, not the database. To rotate this
+              brand&apos;s token, update <span className="font-mono">{row.token_env_key}</span> in
+              your Vercel project settings and redeploy.
             </p>
           </div>
           {error && <div className="text-[11px] text-danger">{error}</div>}
@@ -257,20 +261,22 @@ function ConnectChannelModal({
   const [brand, setBrand] = useState('');
   const [channel, setChannel] = useState<'WA' | 'IG'>('WA');
   const [externalId, setExternalId] = useState('');
-  const [accessToken, setAccessToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const brands = state?.brands ?? [];
   const conflict = brand && existingRows.some((r) => r.brand === brand && r.channel === channel);
+  const tokenEnvKey = brand
+    ? `${channel === 'IG' ? 'INSTAGRAM_TOKEN' : 'WHATSAPP_TOKEN'}_${brand.toUpperCase()}`
+    : '';
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     if (!brand) { setError('Pick a brand'); return; }
     if (conflict) { setError(`${brand} · ${channel} is already connected. Edit it instead.`); return; }
-    if (!externalId.trim() || !accessToken.trim()) {
-      setError('Account ID and access token are required');
+    if (!externalId.trim()) {
+      setError('Account ID is required');
       return;
     }
     setBusy(true);
@@ -282,7 +288,6 @@ function ConnectChannelModal({
           brand,
           channel,
           external_account_id: externalId.trim(),
-          access_token: accessToken.trim(),
         }),
       });
       const data = await res.json();
@@ -369,19 +374,17 @@ function ConnectChannelModal({
             </p>
           </div>
 
-          <div>
-            <label className="block text-[11px] font-medium text-text-secondary mb-1">Access token</label>
-            <input
-              type="password"
-              value={accessToken}
-              onChange={(e) => setAccessToken(e.target.value)}
-              placeholder="EAAG…"
-              className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
-            />
-            <p className="text-[11px] text-text-muted mt-1">
-              Long-lived system-user token. {channel === 'WA' && 'We verify it with Meta before saving.'}
-            </p>
-          </div>
+          {brand && (
+            <div className="rounded-md border border-border-default bg-canvas p-3 text-[11px] text-text-secondary">
+              <p className="font-medium text-text-default mb-1">Access token</p>
+              <p>
+                Tokens are NOT stored in the database. Set
+                <span className="font-mono"> {tokenEnvKey} </span>
+                in your Vercel project environment, then redeploy. The inbox will
+                pick it up automatically — no extra config here.
+              </p>
+            </div>
+          )}
 
           {error && (
             <div className="bg-danger-soft border border-danger/20 text-danger text-xs px-3 py-2 rounded-md">
@@ -392,8 +395,8 @@ function ConnectChannelModal({
 
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border-default">
           <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button variant="primary" size="sm" onClick={submit} disabled={busy || conflict || !brand || !externalId.trim() || !accessToken.trim()}>
-            {busy ? (channel === 'WA' ? 'Verifying with Meta…' : 'Saving…') : 'Connect & save'}
+          <Button variant="primary" size="sm" onClick={submit} disabled={busy || conflict || !brand || !externalId.trim()}>
+            {busy ? 'Saving…' : 'Connect & save'}
           </Button>
         </div>
       </div>

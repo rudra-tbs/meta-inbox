@@ -4,7 +4,8 @@ import { callLLM } from '@/lib/llm';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { sendInstagramMessage } from '@/lib/instagram';
 import { findOrCreateContact, updateContactFromQualification } from '@/lib/contact-merge';
-import { getBrandSystemPrompt } from '@/lib/brand-contexts';
+import { getBrandSystemPrompt, MissingBrandPromptError } from '@/lib/brand-contexts';
+import * as Sentry from '@sentry/nextjs';
 import { logEvent } from '@/lib/activity';
 import { extractCleanText, extractQualData } from '@/lib/ai-response';
 
@@ -65,7 +66,28 @@ export async function handleAIResponse(
     .order('created_at', { ascending: true })
     .limit(20);
 
-  const systemPrompt = await getBrandSystemPrompt(supabase, conversation.brand);
+  let systemPrompt: string;
+  try {
+    systemPrompt = await getBrandSystemPrompt(supabase, conversation.brand);
+  } catch (err) {
+    if (err instanceof MissingBrandPromptError) {
+      // STRICT_BRAND_PROMPT mode: hand off to a human rather than reply with
+      // generic copy on a brand that's expected to have its own prompt.
+      console.error(`[AI Handler] Strict mode: ${err.message} — abstaining`);
+      await supabase
+        .from('conversations')
+        .update({
+          mode: 'HUMAN',
+          needs_human_reply: true,
+          ai_abstained: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', conversation.id);
+      await logEvent(supabase, conversation.id, 'ABSTAIN', { metadata: { reason: 'missing_brand_prompt' } });
+      return;
+    }
+    throw err;
+  }
   const messages: Array<{ role: string; content: string }> = [
     { role: 'system', content: systemPrompt },
   ];
@@ -106,9 +128,13 @@ export async function handleAIResponse(
 
   const rawAIResponse = stripThinkingBlocks(await callLLM(messages));
 
-  // ABSTAIN: silently hand off to human. The ai_abstained flag is what
-  // lets the inbox show a distinct indicator — without it we can't tell
-  // an AI-bailout apart from a human-initiated mode toggle.
+  // ABSTAIN: silently hand off to human. The ai_abstained flag is the
+  // inbox indicator. We deliberately do NOT set manually_set_human or
+  // stamp last_human_message_at — those would permanently lock the
+  // conversation out of AI reactivation. Reactivation should still
+  // happen after the standard 30-day silence window if the lead
+  // returns, OR sooner once the RM actually replies (the reply route
+  // resets ai_abstained + needs_human_reply + suggested_reply).
   if (rawAIResponse.trim() === 'ABSTAIN') {
     console.log(`[AI Handler] ABSTAIN for conversation ${conversation.id} — switching to HUMAN`);
     await supabase
@@ -116,9 +142,7 @@ export async function handleAIResponse(
       .update({
         mode: 'HUMAN',
         needs_human_reply: true,
-        manually_set_human: true,
         ai_abstained: true,
-        last_human_message_at: new Date().toISOString(),
         suggested_reply: null,
         suggested_reply_at: null,
         updated_at: new Date().toISOString(),
@@ -208,6 +232,10 @@ export async function handleAIResponse(
   } catch (err) {
     sendError = err instanceof Error ? err.message : String(err);
     console.error(`${conversation.channel} delivery failed (reply saved to DB):`, err);
+    Sentry.captureException(err, {
+      tags: { component: 'ai-handler', stage: 'send', channel: conversation.channel, brand: conversation.brand },
+      extra: { conversation_id: conversation.id },
+    });
   }
 
   if (insertedMsg?.id) {

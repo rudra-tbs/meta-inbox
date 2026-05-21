@@ -1,5 +1,5 @@
 import { createServerClient } from '@/lib/supabase';
-import { getBrandChannel } from '@/lib/brand-channels';
+import { getBrandChannel, getBrandToken, tokenEnvKey } from '@/lib/brand-channels';
 import type { Brand } from '@/types';
 
 interface SendOptions {
@@ -47,8 +47,8 @@ async function postMessage(
 }
 
 // Brand-aware IG send. brand_channels stores the IG Business Account ID in
-// external_account_id and the long-lived token in access_token. Same lookup
-// path as WhatsApp, different channel column.
+// external_account_id; the long-lived token comes from the environment
+// (INSTAGRAM_TOKEN_<BRAND>). Tokens are intentionally NOT stored in Postgres.
 export async function sendInstagramMessage(
   brand: Brand,
   recipientIgScopedId: string,
@@ -57,7 +57,11 @@ export async function sendInstagramMessage(
   const supabase = createServerClient();
   const creds = await getBrandChannel(supabase, brand, 'IG');
   if (!creds) {
-    throw new Error(`Instagram not configured for brand ${brand}`);
+    const token = getBrandToken(brand, 'IG');
+    if (!token) {
+      throw new Error(`Instagram token not set for brand ${brand} — configure env var ${tokenEnvKey(brand, 'IG')}`);
+    }
+    throw new Error(`Instagram not configured for brand ${brand} — add a brand_channels row from /admin → Channels`);
   }
   return postMessage(recipientIgScopedId, text, {
     igBusinessAccountId: creds.external_account_id,
