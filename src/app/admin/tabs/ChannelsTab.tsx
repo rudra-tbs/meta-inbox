@@ -13,6 +13,7 @@ interface BrandChannelRow {
   updated_at: string;
   configured_by_name: string | null;
   configured_by_email: string | null;
+  token_env_suffix: string;
   token_env_key: string;
   token_env_set: boolean;
 }
@@ -295,16 +296,19 @@ function ConnectChannelModal({
 
   const brands = state?.brands ?? [];
   const conflict = brand && existingRows.some((r) => r.brand === brand && r.channel === channel);
+  const selectedBrandName = brand ? brands.find((b) => b.id === brand)?.name ?? '' : '';
 
-  // Hit /api/brand-channels/env-check whenever the brand+channel pair
-  // changes so the admin sees env-set / env-missing live, before they
-  // commit. Reset to null while a new check is in flight so we don't
-  // render stale state.
+  // Hit /api/brand-channels/env-check with the brand's DISPLAY NAME (not
+  // the pipeline id) so the admin sees the human-readable env var key
+  // — e.g. WHATSAPP_TOKEN_RSP for "Rahul Saharan Photography", not
+  // WHATSAPP_TOKEN_67. Computed via brandToEnvKey() server-side.
   useEffect(() => {
-    if (!brand) { setEnvStatus(null); return; }
+    if (!brand || !selectedBrandName) { setEnvStatus(null); return; }
     let cancelled = false;
     setEnvStatus(null);
-    fetch(`/api/brand-channels/env-check?brand=${encodeURIComponent(brand)}&channel=${channel}`)
+    fetch(
+      `/api/brand-channels/env-check?display_name=${encodeURIComponent(selectedBrandName)}&channel=${channel}`,
+    )
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
@@ -312,7 +316,7 @@ function ConnectChannelModal({
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [brand, channel]);
+  }, [brand, channel, selectedBrandName]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -332,6 +336,7 @@ function ConnectChannelModal({
           brand,
           channel,
           external_account_id: externalId.trim(),
+          display_name: selectedBrandName,
         }),
       });
       const data = await res.json();

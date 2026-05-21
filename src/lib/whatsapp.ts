@@ -1,5 +1,5 @@
 import { createServerClient } from '@/lib/supabase';
-import { getBrandChannel, getBrandToken, tokenEnvKey } from '@/lib/brand-channels';
+import { getBrandChannel, getBrandToken, resolveTokenEnvKey } from '@/lib/brand-channels';
 import type { Brand } from '@/types';
 
 interface SendOptions {
@@ -50,9 +50,10 @@ export async function sendWhatsAppMessage(
   const creds = await getBrandChannel(supabase, brand, 'WA');
   if (!creds) {
     // Distinguish missing-row from missing-env so the operator knows which to fix.
-    const token = getBrandToken(brand, 'WA');
+    const token = await getBrandToken(supabase, brand, 'WA');
     if (!token) {
-      throw new Error(`WhatsApp token not set for brand ${brand} — configure env var ${tokenEnvKey(brand, 'WA')}`);
+      const envKey = await resolveTokenEnvKey(supabase, brand, 'WA');
+      throw new Error(`WhatsApp token not set for brand ${brand} — configure env var ${envKey}`);
     }
     throw new Error(`WhatsApp not configured for brand ${brand} — add a brand_channels row from /admin → Channels`);
   }

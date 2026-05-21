@@ -1,5 +1,5 @@
 import { createServerClient } from '@/lib/supabase';
-import { getBrandChannel, getBrandToken, tokenEnvKey } from '@/lib/brand-channels';
+import { getBrandChannel, getBrandToken, resolveTokenEnvKey } from '@/lib/brand-channels';
 import type { Brand } from '@/types';
 
 interface SendOptions {
@@ -57,9 +57,10 @@ export async function sendInstagramMessage(
   const supabase = createServerClient();
   const creds = await getBrandChannel(supabase, brand, 'IG');
   if (!creds) {
-    const token = getBrandToken(brand, 'IG');
+    const token = await getBrandToken(supabase, brand, 'IG');
     if (!token) {
-      throw new Error(`Instagram token not set for brand ${brand} — configure env var ${tokenEnvKey(brand, 'IG')}`);
+      const envKey = await resolveTokenEnvKey(supabase, brand, 'IG');
+      throw new Error(`Instagram token not set for brand ${brand} — configure env var ${envKey}`);
     }
     throw new Error(`Instagram not configured for brand ${brand} — add a brand_channels row from /admin → Channels`);
   }

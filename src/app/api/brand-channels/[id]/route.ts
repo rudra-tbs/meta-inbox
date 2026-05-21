@@ -8,7 +8,7 @@ import { getUserByAuthId } from '@/lib/auth';
 import { fetchWhatsAppNumberInfo } from '@/lib/whatsapp';
 import { fetchInstagramAccountInfo } from '@/lib/instagram';
 import { logAdminEvent } from '@/lib/admin-events';
-import { getBrandToken, tokenEnvKey } from '@/lib/brand-channels';
+import { getBrandToken, resolveTokenEnvKey } from '@/lib/brand-channels';
 import type { Brand, Channel } from '@/types';
 
 async function requireAdmin() {
@@ -35,10 +35,9 @@ async function requireAdmin() {
 }
 
 // PATCH no longer accepts access_token. Tokens live in env vars
-// (WHATSAPP_TOKEN_<BRAND> / INSTAGRAM_TOKEN_<BRAND>) and rotate by editing
-// Vercel env + redeploy. Allowed updates are external_account_id and the
-// display_name. If the brand's env token is set we re-validate the new
-// account id against Meta; otherwise we save the row and warn.
+// (WHATSAPP_TOKEN_<SUFFIX> / INSTAGRAM_TOKEN_<SUFFIX>) and rotate by
+// editing Vercel env + redeploy. The suffix is computed from the brand's
+// display name at onboarding and stored in brand_settings.token_env_suffix.
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -53,7 +52,7 @@ export async function PATCH(
 
   if (typeof body?.access_token === 'string' && body.access_token.trim()) {
     return NextResponse.json(
-      { error: 'Tokens are no longer stored in the database. Set WHATSAPP_TOKEN_<BRAND> or INSTAGRAM_TOKEN_<BRAND> in your Vercel environment and redeploy.' },
+      { error: 'Tokens are no longer stored in the database. Set WHATSAPP_TOKEN_<SUFFIX> or INSTAGRAM_TOKEN_<SUFFIX> in your Vercel environment and redeploy.' },
       { status: 400 }
     );
   }
@@ -71,7 +70,7 @@ export async function PATCH(
   if (newAccount && newAccount !== existing.external_account_id) {
     const brand = existing.brand as Brand;
     const channel = existing.channel as Channel;
-    const token = getBrandToken(brand, channel);
+    const token = await getBrandToken(supabase, brand, channel);
     // Re-validate against Meta only when the env token is configured. Without
     // a token we can't verify the credential pair; save the row so the admin
     // can finish wiring the env var in Vercel.
@@ -101,7 +100,8 @@ export async function PATCH(
       }
     } else {
       updates.external_account_id = newAccount;
-      console.warn(`[Brand Channels] ${tokenEnvKey(brand, channel)} not set — saving without Meta validation`);
+      const envKey = await resolveTokenEnvKey(supabase, brand, channel);
+      console.warn(`[Brand Channels] ${envKey} not set — saving without Meta validation`);
     }
   }
 

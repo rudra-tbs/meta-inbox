@@ -5,7 +5,10 @@ import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
-import { tokenEnvKey, getBrandToken } from '@/lib/brand-channels';
+import {
+  resolveTokenEnvKey,
+  resolveTokenEnvSuffix,
+} from '@/lib/brand-channels';
 import type { Brand, Channel } from '@/types';
 
 async function requireAdmin() {
@@ -52,23 +55,31 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Tokens now live in env vars keyed by brand. We return the env-var name
-  // and whether the corresponding env var is currently set, so the UI can
-  // render a "Configured" / "Missing" pill without reading the value itself.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rows = (data ?? []).map((r: any) => ({
-    id: r.id,
-    brand: r.brand,
-    channel: r.channel,
-    external_account_id: r.external_account_id,
-    display_name: r.display_name,
-    configured_at: r.configured_at,
-    updated_at: r.updated_at,
-    configured_by_name: r.configured_by?.name ?? null,
-    configured_by_email: r.configured_by?.email ?? null,
-    token_env_key: tokenEnvKey(r.brand as Brand, r.channel as Channel),
-    token_env_set: !!getBrandToken(r.brand as Brand, r.channel as Channel),
-  }));
+  // Resolve each row's env-var key + presence via brand_settings.
+  // We do this per row (small N — usually 1–10 brand_channels rows total)
+  // rather than pre-fetching the whole brand_settings table to keep the
+  // logic in one place.
+  const rows = await Promise.all(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (data ?? []).map(async (r: any) => {
+      const suffix = await resolveTokenEnvSuffix(supabase, r.brand as Brand);
+      const tokenEnvKey = await resolveTokenEnvKey(supabase, r.brand as Brand, r.channel as Channel);
+      return {
+        id: r.id,
+        brand: r.brand,
+        channel: r.channel,
+        external_account_id: r.external_account_id,
+        display_name: r.display_name,
+        configured_at: r.configured_at,
+        updated_at: r.updated_at,
+        configured_by_name: r.configured_by?.name ?? null,
+        configured_by_email: r.configured_by?.email ?? null,
+        token_env_suffix: suffix,
+        token_env_key: tokenEnvKey,
+        token_env_set: !!process.env[tokenEnvKey],
+      };
+    })
+  );
 
   return NextResponse.json(rows);
 }

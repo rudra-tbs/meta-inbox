@@ -610,9 +610,11 @@ WHATSAPP_VERIFY_TOKEN=          # GET-handshake token; same value also accepted 
 INSTAGRAM_VERIFY_TOKEN=
 
 # Long-lived Meta tokens (per brand). Pattern:
-#   WHATSAPP_TOKEN_<BRAND>     — Cloud API system-user token for sending WA messages
-#   INSTAGRAM_TOKEN_<BRAND>    — Page access token covering the IG Business Account
-# <BRAND> is the brand string from brand_channels, uppercased.
+#   WHATSAPP_TOKEN_<SUFFIX>    — Cloud API system-user token for sending WA messages
+#   INSTAGRAM_TOKEN_<SUFFIX>   — Page access token covering the IG Business Account
+# <SUFFIX> is brandToEnvKey(display_name), persisted to
+# brand_settings.token_env_suffix at channel-connect time. See the
+# "Brand identifier convention" section below for derivation rules.
 # Tokens NEVER live in Postgres — they are read from these env vars at send time.
 WHATSAPP_TOKEN_TBS=
 WHATSAPP_TOKEN_RD=
@@ -699,11 +701,11 @@ Deferred — needs a CRM-side change.
 
 ### Tokens moved out of the database
 
-`brand_channels.access_token` is no longer read or written by the application. Tokens are read at send time from env vars keyed by brand:
+`brand_channels.access_token` is no longer read or written by the application. Tokens are read at send time from env vars whose suffix is derived from the brand's display name via `brandToEnvKey()` and persisted to `brand_settings.token_env_suffix`:
 
 ```
-WHATSAPP_TOKEN_<BRAND>      e.g. WHATSAPP_TOKEN_TBS
-INSTAGRAM_TOKEN_<BRAND>     e.g. INSTAGRAM_TOKEN_TBS
+WHATSAPP_TOKEN_<SUFFIX>     e.g. WHATSAPP_TOKEN_TBS, WHATSAPP_TOKEN_RSP
+INSTAGRAM_TOKEN_<SUFFIX>    e.g. INSTAGRAM_TOKEN_TBS, INSTAGRAM_TOKEN_RSP
 ```
 
 Helpers in `src/lib/brand-channels.ts`:
@@ -717,15 +719,15 @@ API surface changes:
 
 - `GET /api/brand-channels` — drops `access_token_preview`. Returns `token_env_key` and `token_env_set` (boolean) so the UI can render a "env set / env missing" pill.
 - `PATCH /api/brand-channels/[id]` — rejects `access_token` payloads with a 400 explaining the new flow. Still accepts `external_account_id` changes; if the env token is set we re-validate against Meta, otherwise we save the row and warn.
-- `POST /api/onboarding/channel` — no longer accepts an `access_token` body field. Validates only when `WHATSAPP_TOKEN_<BRAND>` / `INSTAGRAM_TOKEN_<BRAND>` is already set in the environment. If not, the row is saved with `display_name=null` and the response includes `{ warning: "Set X in your environment to enable sending." }`.
-- Admin **Channels** tab — token field is gone. Each row shows `Token: WHATSAPP_TOKEN_<BRAND>` with a green "env set" or red "env missing" pill. The Connect-channel modal shows an instruction box pointing the admin to Vercel env settings.
+- `POST /api/onboarding/channel` — no longer accepts an `access_token` body field. Accepts an optional `display_name` (falls back to a CRM `pipelines.name` lookup) and persists `brand_settings.token_env_suffix = brandToEnvKey(display_name)`. Validates against Meta only when the env token is set; otherwise the row is saved with a `warning` field in the response.
+- Admin **Channels** tab — token field is gone. Each row shows `Token: WHATSAPP_TOKEN_<SUFFIX>` with a green "env set" or red "env missing" pill. The Connect-channel modal live-checks the suffix via `brandToEnvKey()` and points the admin to Vercel env settings.
 
-DB cleanup: `migrations/2026_05_drop_brand_channel_tokens.sql` drops the now-unused `access_token` column. Run after all `WHATSAPP_TOKEN_<BRAND>` / `INSTAGRAM_TOKEN_<BRAND>` env vars are populated in production.
+DB cleanup: `migrations/2026_05_drop_brand_channel_tokens.sql` drops the now-unused `access_token` column; `migrations/2026_05_brand_env_suffix.sql` adds `brand_settings.token_env_suffix` and defensively drops any leftover brand CHECK constraints. Run after all `WHATSAPP_TOKEN_<SUFFIX>` / `INSTAGRAM_TOKEN_<SUFFIX>` env vars are populated in production.
 
 ### Rotating a token
 
 1. Generate a new token in Meta Business Manager.
-2. Update `WHATSAPP_TOKEN_<BRAND>` / `INSTAGRAM_TOKEN_<BRAND>` in your Vercel project → Settings → Environment Variables.
+2. Update `WHATSAPP_TOKEN_<SUFFIX>` / `INSTAGRAM_TOKEN_<SUFFIX>` in your Vercel project → Settings → Environment Variables. The exact suffix is visible in the Channels tab row (`Token:` column).
 3. Redeploy (Vercel does this automatically for non-Preview envs on save).
 4. Hard-refresh `/admin → Channels` — the pill should flip back to "env set".
 
@@ -733,56 +735,112 @@ No DB write, no app restart beyond the redeploy, no token ever touches Postgres.
 
 ---
 
-## Env var naming convention (multi-brand)
+## Brand identifier convention
 
-The token env-var name is computed at runtime in `src/lib/brand-channels.ts:14-16`:
+There are **two distinct identifiers** for every brand. Keep them straight when reading the code.
+
+| Concept | Source of truth | Format | Used by |
+|---|---|---|---|
+| Brand id | `brand_channels.brand`, `conversations.brand`, `user_access.brand`, etc. | Free-text. In production this is the CRM `pipelines.id` as a string (e.g. `'67'`, `'58'`). Legacy rows may still hold `'TBS'` / `'RD'`. | Webhook routing, conversation FKs, CRM push pipeline resolver, RLS policies. |
+| Token env suffix | `brand_settings.token_env_suffix` (computed once at onboarding) | Uppercased letters + digits, derived from the brand's display name via `brandToEnvKey()`. e.g. `TBS`, `RSP`, `AURAMIST`. | Building `WHATSAPP_TOKEN_<SUFFIX>` / `INSTAGRAM_TOKEN_<SUFFIX>` env-var names. |
+
+The brand id is whatever the CRM gives us; the env suffix is a deterministic, human-readable label derived from the brand's display name. They're decoupled on purpose: the CRM owns the brand id, your Vercel env owns the tokens, and `brand_settings.token_env_suffix` bridges the two.
+
+There is **no CHECK constraint** on any `brand` column. The original `'TBS' | 'RD'` enum was dropped in `migrations/brands_from_pipelines.sql`; `migrations/2026_05_brand_env_suffix.sql` defensively re-drops any remaining brand constraints across every brand-bearing table.
+
+### How `brandToEnvKey` derives the suffix
+
+`src/lib/brand-env.ts` exposes a pure isomorphic function:
 
 ```ts
-const prefix = channel === 'IG' ? 'INSTAGRAM_TOKEN' : 'WHATSAPP_TOKEN';
-return `${prefix}_${String(brand).toUpperCase()}`;
+brandToEnvKey(name: string): string
 ```
 
-So **only two** per-brand token env vars exist — one per channel. Phone number IDs and IG Business Account IDs are NOT env vars; they live in the `brand_channels.external_account_id` column, set from `/admin → Channels`.
+Rules:
+1. Trim, then collapse non-alphanumeric runs into spaces.
+2. Split on whitespace.
+3. Single word → uppercase the entire word. Multiple words → first character of each word, uppercased.
+4. Strip anything that isn't `[A-Z0-9]` (defensive).
+5. Truncate to 10 characters.
 
-### Per-brand env vars
+Examples:
 
-For each brand you onboard, add (at minimum):
+| Display name | Suffix | WhatsApp env var |
+|---|---|---|
+| `The Bride Side` | `TBS` | `WHATSAPP_TOKEN_TBS` |
+| `Revaah Decor` | `RD` | `WHATSAPP_TOKEN_RD` |
+| `Rahul Saharan Photography` | `RSP` | `WHATSAPP_TOKEN_RSP` |
+| `The Wedding Minimalist` | `TWM` | `WHATSAPP_TOKEN_TWM` |
+| `Auramist` | `AURAMIST` | `WHATSAPP_TOKEN_AURAMIST` |
+
+The same suffix is used for both channels — `WHATSAPP_TOKEN_<SUFFIX>` and `INSTAGRAM_TOKEN_<SUFFIX>` share `<SUFFIX>` for a given brand.
+
+### Resolution at runtime
+
+`src/lib/brand-channels.ts` exposes:
+
+- `tokenEnvKeyForSuffix(channel, suffix)` — pure: `'WHATSAPP_TOKEN_' + suffix` or `'INSTAGRAM_TOKEN_' + suffix`.
+- `resolveTokenEnvSuffix(supabase, brand)` — async: reads `brand_settings.token_env_suffix`. Falls back to `String(brand).toUpperCase()` when null. The fallback keeps legacy `brand='TBS'` / `brand='RD'` deployments working without a backfill.
+- `resolveTokenEnvKey(supabase, brand, channel)` — async: composes the two above.
+- `getBrandToken(supabase, brand, channel)` — async: returns `process.env[resolveTokenEnvKey(...)]` or `null`.
+- `getBrandChannel(supabase, brand, channel)` — async: returns `{ external_account_id, access_token, display_name }` or `null`.
+
+The suffix is computed and persisted **once** at channel-connect time in `POST /api/onboarding/channel`:
+1. The wizard passes the brand's display name (`display_name` body field).
+2. The route falls back to a CRM `pipelines.name` lookup if `display_name` is missing.
+3. `brandToEnvKey(displayName)` produces the suffix.
+4. `brand_settings` is upserted (`{ brand, token_env_suffix }`).
+5. The Meta credential pair is validated against the env token.
+6. The `brand_channels` row is inserted.
+
+If `brand_settings.token_env_suffix` already exists and isn't equal to the legacy fallback, it's preserved — a CRM-side rename will not silently rotate the env-var key out from under a deployed env.
+
+### Per-brand env vars (token + optional pipeline mapping)
 
 | Env var | Purpose | Required? |
 |---|---|---|
-| `WHATSAPP_TOKEN_<BRAND>` | Long-lived Meta Cloud API system-user token; used for sending WA messages | If the brand has a WhatsApp channel |
-| `INSTAGRAM_TOKEN_<BRAND>` | Page access token covering the IG Business Account | If the brand has an Instagram channel |
-| `CRM_PIPELINE_<BRAND>_ID` | Numeric CRM pipeline id (optional — use this OR a `brand_pipelines` Supabase row) | Optional |
-| `CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID` | Numeric CRM stage id new deals start in (optional — same alternative as above) | Optional |
+| `WHATSAPP_TOKEN_<SUFFIX>` | Long-lived Meta Cloud API system-user token | If the brand has a WhatsApp channel |
+| `INSTAGRAM_TOKEN_<SUFFIX>` | Page access token covering the IG Business Account | If the brand has an Instagram channel |
+| `CRM_PIPELINE_<BRAND>_ID` | Numeric CRM pipeline id (alternative to a `brand_pipelines` Supabase row) | Optional |
+| `CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID` | Numeric CRM stage id new deals start in | Optional |
 
-`<BRAND>` is the brand string from `brand_channels.brand`, uppercased. So if the row has `brand='tbs'` or `brand='TBS'`, both resolve to `WHATSAPP_TOKEN_TBS`.
+Note that `<SUFFIX>` (token env vars) and `<BRAND>` (CRM pipeline env vars) come from different sources — the suffix is `brand_settings.token_env_suffix`, while `<BRAND>` in the CRM-pipeline env vars is `String(brand).toUpperCase()` (the brand id, not the display-name-derived suffix). In practice for most deployments they'll be the same string, but they don't have to be.
 
 ### Global env vars (not per-brand)
 
 | Env var | Purpose |
 |---|---|
-| `WHATSAPP_APP_SECRET` | HMAC verification for inbound webhook (Meta App Dashboard → Settings → Basic) |
+| `WHATSAPP_APP_SECRET` | HMAC verification for inbound webhook |
 | `WHATSAPP_VERIFY_TOKEN` | GET-handshake token for the WA webhook subscription |
 | `INSTAGRAM_VERIFY_TOKEN` | GET-handshake token for the IG webhook subscription (can be the same string as WA's) |
-| `CRM_DEFAULT_INITIAL_STAGE_ID` | Fallback initial stage when `brand_pipelines` + `CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID` are both unset |
+| `CRM_DEFAULT_INITIAL_STAGE_ID` | Fallback initial stage when neither `brand_pipelines` row nor `CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID` is set |
 
-### Copy-paste env block: TBS + RD
+### Copy-paste env block — example brands
 
 ```
-# Per-brand tokens (required)
+# Per-brand tokens. <SUFFIX> = brandToEnvKey(display_name).
+# Examples: 'The Bride Side' → TBS, 'Revaah Decor' → RD,
+#           'Rahul Saharan Photography' → RSP,
+#           'The Wedding Minimalist' → TWM, 'Auramist' → AURAMIST.
 WHATSAPP_TOKEN_TBS=
 INSTAGRAM_TOKEN_TBS=
 WHATSAPP_TOKEN_RD=
 INSTAGRAM_TOKEN_RD=
-
-# Per-brand CRM pipeline mapping (optional — DB row in brand_pipelines is preferred)
-# CRM_PIPELINE_TBS_ID=
-# CRM_PIPELINE_TBS_INITIAL_STAGE_ID=
-# CRM_PIPELINE_RD_ID=
-# CRM_PIPELINE_RD_INITIAL_STAGE_ID=
+WHATSAPP_TOKEN_RSP=
+INSTAGRAM_TOKEN_RSP=
+WHATSAPP_TOKEN_TWM=
+INSTAGRAM_TOKEN_TWM=
+WHATSAPP_TOKEN_AURAMIST=
+INSTAGRAM_TOKEN_AURAMIST=
 ```
 
-Adding a third brand (say `RV` for Revaah) just means adding `WHATSAPP_TOKEN_RV` and `INSTAGRAM_TOKEN_RV`. No code change.
+Adding a new brand:
+1. Read the display name the admin will pick from the CRM.
+2. Compute the suffix with `brandToEnvKey(name)` — or just open the connect modal in `/admin → Channels` and copy the suffix it displays.
+3. Add `WHATSAPP_TOKEN_<SUFFIX>` and/or `INSTAGRAM_TOKEN_<SUFFIX>` to Vercel.
+4. Redeploy, then connect the channel in the admin UI.
+
+No code change needed for new brands.
 
 ---
 
@@ -792,25 +850,27 @@ The signup wizard at `/signup` has three steps — **Account → Brands → Revi
 
 ### Connecting a new brand's WhatsApp / Instagram (admin-only)
 
-1. **Set the env var(s) in Vercel first.**
+1. **Go to `/admin → Channels` → "+ Connect channel" first** to see the exact env var name.
+   - Pick the brand (sourced from CRM pipelines).
+   - Pick WhatsApp or Instagram.
+   - The modal calls `GET /api/brand-channels/env-check?display_name=…&channel=…` and renders the exact env-var name (e.g. `WHATSAPP_TOKEN_RSP`) with an "env set / env missing" pill.
+
+2. **Set the env var in Vercel if it's missing.**
    - Vercel project → Settings → Environment Variables → Add.
-   - Name: `WHATSAPP_TOKEN_<BRAND>` and/or `INSTAGRAM_TOKEN_<BRAND>` (brand uppercased, e.g. `WHATSAPP_TOKEN_RD`).
+   - Name: exactly the suffix the modal shows you (e.g. `WHATSAPP_TOKEN_RSP`).
    - Value: long-lived system-user token from Meta Business Manager.
    - Apply to Production (and Preview if you want it on PR deploys).
    - Redeploy — Vercel triggers automatically on env-var save.
 
-2. **Go to `/admin → Channels` → "+ Connect channel".**
-   - Pick the brand (sourced from CRM pipelines).
-   - Pick WhatsApp or Instagram.
-   - The modal live-checks `GET /api/brand-channels/env-check` and shows a green "env set" pill (or red "env missing" if step 1 isn't done — you can still save, but sending won't work yet).
+3. **Come back to the modal and complete the form.**
    - Enter the Meta account ID (WA phone number ID or IG Business Account ID).
-   - Submit. If the env token is present we validate the credential pair against Meta and store the verified display name; if not, we save the row anyway and surface a warning banner asking you to finish step 1.
+   - Submit. If the env token is present we validate the credential pair against Meta and store the verified display name; if not, we save the row anyway and surface a warning banner asking you to finish step 2. We also upsert `brand_settings.token_env_suffix` so the env-key resolution is persistent.
 
-3. **Verify in the list.**
-   - Each row shows `Token: WHATSAPP_TOKEN_<BRAND>` with an "env set / env missing" pill so you can confirm at a glance.
-   - If the pill says "env missing", finish step 1 and redeploy; then refresh the page.
+4. **Verify in the list.**
+   - Each row shows `Token: WHATSAPP_TOKEN_<SUFFIX>` with an "env set / env missing" pill so you can confirm at a glance.
+   - If the pill says "env missing", finish step 2 and redeploy; then refresh the page.
 
-4. **Rotate later** by editing the env var in Vercel and redeploying. The Channels tab "Edit" button only edits the account ID; the rotate-token instruction box points you back to Vercel.
+5. **Rotate later** by editing the env var in Vercel and redeploying. The Channels tab "Edit" button only edits the account ID; the rotate-token instruction box points you back to Vercel.
 
 ### Why this flow
 
@@ -818,9 +878,9 @@ Tokens never touch Postgres, so a Supabase compromise can't leak Meta credential
 
 ### Endpoints involved
 
-- `GET /api/brand-channels` — list rows + per-row `token_env_key` + `token_env_set`.
-- `GET /api/brand-channels/env-check?brand=…&channel=…` — admin-only; returns `{ token_env_key, token_env_set }` for any brand+channel pair (used by the connect modal before save).
-- `POST /api/onboarding/channel` — admin creates the row; validates against Meta when the env token is set, returns `{ warning }` when it isn't.
+- `GET /api/brand-channels` — list rows + per-row `token_env_suffix` + `token_env_key` + `token_env_set` (resolved via `brand_settings.token_env_suffix`, legacy fallback if null).
+- `GET /api/brand-channels/env-check?display_name=…&channel=…` (preferred) or `?brand=…&channel=…` — admin-only; returns `{ token_env_suffix, token_env_key, token_env_set }`. The `display_name` mode computes the suffix via `brandToEnvKey()`; the `brand` mode looks it up from `brand_settings`.
+- `POST /api/onboarding/channel` — admin creates the row; upserts `brand_settings.token_env_suffix`; validates against Meta when the env token is set; returns `{ token_env_key, token_env_suffix, warning }`.
 - `PATCH /api/brand-channels/[id]` — admin edits account ID; re-validates against Meta when the env token is set. Rejects `access_token` payloads with a 400 explaining the new flow.
 - `DELETE /api/brand-channels/[id]` — admin disconnects.
 

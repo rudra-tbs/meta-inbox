@@ -8,26 +8,62 @@ export interface BrandChannelCreds {
   source: 'env';
 }
 
-// Brand+channel → env var name holding the long-lived Meta token. We
-// uppercase the brand so `tbs` and `TBS` both resolve to WHATSAPP_TOKEN_TBS.
-// Pattern is documented in CLAUDE.md and .env.example.
-export function tokenEnvKey(brand: Brand, channel: Channel): string {
+// Pure: composes the env-var key from a precomputed suffix + channel.
+// Use this when the suffix is already known (e.g. UI preview with the
+// brand's display name, or after a brand_settings lookup).
+export function tokenEnvKeyForSuffix(channel: Channel, suffix: string): string {
   const prefix = channel === 'IG' ? 'INSTAGRAM_TOKEN' : 'WHATSAPP_TOKEN';
-  return `${prefix}_${String(brand).toUpperCase()}`;
+  return `${prefix}_${suffix.toUpperCase()}`;
 }
 
-// Read the long-lived Meta token from the environment. Tokens never live
-// in Postgres anymore — they're set in Vercel env (or .env.local) keyed
-// by brand. Returns null when the env var is missing, so callers can
-// distinguish "configured" from "token broken".
-export function getBrandToken(brand: Brand, channel: Channel): string | null {
-  return process.env[tokenEnvKey(brand, channel)] ?? null;
+// Looks up the env-var suffix for a brand id from brand_settings. Falls
+// back to String(brand).toUpperCase() for legacy rows where
+// token_env_suffix has not been populated yet — this keeps deployments
+// with brand='TBS' / brand='RD' literals working without a backfill.
+export async function resolveTokenEnvSuffix(
+  supabase: SupabaseClient,
+  brand: Brand,
+): Promise<string> {
+  const { data } = await supabase
+    .from('brand_settings')
+    .select('token_env_suffix')
+    .eq('brand', String(brand))
+    .maybeSingle();
+  const suffix = (data?.token_env_suffix as string | undefined)?.trim();
+  if (suffix) return suffix;
+  return String(brand).toUpperCase();
+}
+
+// Async: resolves the full env-var key for a brand+channel via
+// brand_settings + legacy fallback.
+export async function resolveTokenEnvKey(
+  supabase: SupabaseClient,
+  brand: Brand,
+  channel: Channel,
+): Promise<string> {
+  const suffix = await resolveTokenEnvSuffix(supabase, brand);
+  return tokenEnvKeyForSuffix(channel, suffix);
+}
+
+// Reads the long-lived Meta token from the environment. Tokens never live
+// in Postgres — they're set in Vercel env (or .env.local) keyed by the
+// suffix resolved from brand_settings.token_env_suffix. Returns null when
+// the env var is missing, so callers can distinguish "configured" from
+// "token broken".
+export async function getBrandToken(
+  supabase: SupabaseClient,
+  brand: Brand,
+  channel: Channel,
+): Promise<string | null> {
+  const key = await resolveTokenEnvKey(supabase, brand, channel);
+  return process.env[key] ?? null;
 }
 
 // Returns the credentials for sending on a given brand+channel. The
 // external_account_id and display_name come from the brand_channels row
-// (admin-editable); the access_token comes from the environment. Returns
-// null if either piece is missing.
+// (admin-editable); the access_token comes from the environment, keyed
+// via brand_settings.token_env_suffix. Returns null if either piece is
+// missing.
 export async function getBrandChannel(
   supabase: SupabaseClient,
   brand: Brand,
@@ -42,7 +78,7 @@ export async function getBrandChannel(
 
   if (!data) return null;
 
-  const access_token = getBrandToken(brand, channel);
+  const access_token = await getBrandToken(supabase, brand, channel);
   if (!access_token) return null;
 
   return {
