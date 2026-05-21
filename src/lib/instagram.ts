@@ -48,7 +48,8 @@ async function postMessage(
 
 // Brand-aware IG send. brand_channels stores the IG Business Account ID in
 // external_account_id; the long-lived token comes from the environment
-// (INSTAGRAM_TOKEN_<BRAND>). Tokens are intentionally NOT stored in Postgres.
+// (INSTAGRAM_TOKEN_<SUFFIX>, where SUFFIX is resolved via brand_settings).
+// Tokens are intentionally NOT stored in Postgres.
 export async function sendInstagramMessage(
   brand: Brand,
   recipientIgScopedId: string,
