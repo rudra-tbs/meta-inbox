@@ -1,6 +1,13 @@
 # Acceltancy Inbox — Claude Code Build Spec
 # Phase 1: TBS WhatsApp · Standalone · No CRM integration
 
+> **Document status:** Sections below this banner are the original Phase-1
+> build spec. The codebase has since shipped multi-brand routing, Instagram
+> parity, contact dedup, an admin panel, RLS, and TBS CRM (MySQL) push.
+> Jump to **"Current State (Post Phase 1)"** at the bottom of this file
+> for the up-to-date architecture, then read this spec for the original
+> intent. The two together describe what's actually running today.
+
 ---
 
 ## Project overview
@@ -529,3 +536,351 @@ supabase
 - Always deduplicate on `whatsapp_message_id` before inserting messages
 - Use `@supabase/ssr` for cookie-based auth — not the legacy `auth-helpers-nextjs`
 - RLS is disabled — enforce access control at the API route level using session user
+
+---
+
+## Current State (Post Phase 1)
+
+The system now extends well beyond the original spec. This section reflects what is in `src/` today.
+
+### Brands & channels
+
+- `Brand` is now `text` (any pipeline-id string), not a fixed `'TBS' | 'RD'` enum.
+- Channels supported: WhatsApp + Instagram (same webhook endpoint, payload-shape-detected).
+- Per-brand credentials, prompts, pipelines, and default mode live in dedicated tables (see schema diff).
+
+### Schema diff vs Phase 1
+
+New tables: `contacts`, `conversation_events`, `admin_events`, `reply_templates`, `brand_channels`, `brand_contexts`, `brand_pipelines`, `brand_settings`, `tag_taxonomy`.
+
+New columns on `conversations`: `contact_id`, `ai_abstained`, `callback_required`, `needs_human_reply`, `manually_set_human`, `instagram_id`, `pushed_to_crm`, `crm_deal_id`, `crm_stage_id`, `crm_stage_name`, `pushed_to_crm_at`, `pushed_by_user_id`, `suggested_reply`, `suggested_reply_at`, `snoozed_until`, `unread_count`, `last_message_preview`, `lead_score`, `tags[]`.
+
+New columns on `messages`: `delivered_status`, `send_error`, `delivered_at`, `read_at`.
+
+Functions: `increment_unread(conv_id uuid)` (atomic unread bump from webhook), `is_admin()` + `user_can_see_brand_channel(text, text)` (RLS helpers, SECURITY DEFINER).
+
+> **Note:** `conversations.{city, wedding_date, guest_count, budget_range, service_type}` are vestigial after the `contacts` table landed. The conversations API JOINs `contacts` and flattens these fields into the response. Treat the conversation columns as dead — write goes through `contact-merge.ts`.
+
+### RLS
+
+RLS is **enabled** on every table (final state after `migrations/2026_05_hardening.sql`). The service-role key bypasses RLS on the server. RLS only governs the browser-side Realtime channel, which uses the anon key — that's where the policies actually matter.
+
+### AI provider
+
+OpenRouter (spec) has been replaced with **Groq** (`src/lib/llm.ts`). Default model `llama-3.3-70b-versatile`, with `GROQ_FALLBACK_MODELS` chain on 429/5xx. 25 s `AbortController` timeout per call.
+
+### Mode resolution (updated)
+
+`src/lib/ai-mode.ts` runs on every inbound:
+
+1. New conversation → `brand_settings.default_mode` (`AI` or `HUMAN`). If HUMAN, also stamps `manually_set_human=true` so it stays.
+2. Existing conversation with `manually_set_human=true` → HUMAN (operator override).
+3. `last_human_message_at` null → AI.
+4. `last_human_message_at` ≤ window (`ai_reactivation_window_days` ?? 30 days) → HUMAN.
+5. Older → AI (reactivation).
+
+### What the AI handler does (`src/lib/ai-handler.ts`)
+
+- Ensures a `contact_id` is linked (via `findOrCreateContact`).
+- Builds a per-brand system prompt (`brand_contexts.system_prompt`, falling back to `system-prompt.ts`).
+- Calls Groq, strips `<think>` blocks, splits `<qualification_data>` JSON from the user-visible reply.
+- **ABSTAIN** → conversation marked `mode=HUMAN`, `ai_abstained=true`, `needs_human_reply=true`. Does NOT touch `manually_set_human` or `last_human_message_at` (the 30-day reactivation window must keep working).
+- **HUMAN mode** → save reply as `suggested_reply` instead of sending; preserve previous suggestion if RM hasn't consumed it.
+- **AI mode** → INSERT outbound as `PENDING`, send via Meta, mark `SENT`/`FAILED`.
+- **`is_qualified`** → flip status to `QUALIFIED`, mode to `HUMAN`, stamp `manually_set_human=true` (auto-handoff).
+
+### Callback detection
+
+`src/lib/ai-handler.ts:19-25` — hardcoded English/Hinglish phrase list, case-insensitive substring match against AI reply + inbound text. Sets `callback_required=true` (cleared on next AI turn that doesn't repeat the phrase, or on RM reply).
+
+### CRM (MySQL) push
+
+- Endpoint: `POST /api/conversations/[id]/push-to-crm`.
+- Pipeline/stage resolution order: `brand_pipelines` row → `CRM_PIPELINE_<BRAND>_ID` env → numeric-brand fallback + `CRM_DEFAULT_INITIAL_STAGE_ID`.
+- Three MySQL writes: `INSERT persons … ON DUPLICATE KEY UPDATE`, SELECT person_id, `INSERT deals`.
+- Each step wrapped with rollback of the Supabase lock on failure (see Phase 1.5 below).
+- Single-conversation stage refresh: `POST /api/conversations/refresh-stages?conversation_id=<uuid>` (no param = bulk refresh).
+
+### Required env vars
+
+```
+# WhatsApp / Meta (webhook signature + verification)
+WHATSAPP_APP_SECRET=            # HMAC verification for inbound webhook
+WHATSAPP_VERIFY_TOKEN=          # GET-handshake token; same value also accepted as INSTAGRAM_VERIFY_TOKEN
+INSTAGRAM_VERIFY_TOKEN=
+
+# Long-lived Meta tokens (per brand). Pattern:
+#   WHATSAPP_TOKEN_<SUFFIX>    — Cloud API system-user token for sending WA messages
+#   INSTAGRAM_TOKEN_<SUFFIX>   — Page access token covering the IG Business Account
+# <SUFFIX> is brandToEnvKey(display_name), persisted to
+# brand_settings.token_env_suffix at channel-connect time. See the
+# "Brand identifier convention" section below for derivation rules.
+# Tokens NEVER live in Postgres — they are read from these env vars at send time.
+WHATSAPP_TOKEN_TBS=
+WHATSAPP_TOKEN_RD=
+INSTAGRAM_TOKEN_TBS=
+INSTAGRAM_TOKEN_RD=
+
+# Groq
+GROQ_API_KEY=
+GROQ_MODEL=                     # default llama-3.3-70b-versatile
+GROQ_FALLBACK_MODELS=           # csv of fallback model ids
+
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+# TBS CRM (MySQL)
+CRM_MYSQL_HOST=
+CRM_MYSQL_PORT=
+CRM_MYSQL_USER=
+CRM_MYSQL_PASSWORD=
+CRM_MYSQL_DATABASE=             # default 'thebrideside'
+
+# Optional pipeline mapping (any one path is enough)
+CRM_PIPELINE_<BRAND>_ID=
+CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID=
+CRM_DEFAULT_INITIAL_STAGE_ID=
+
+# Hardening
+STRICT_BRAND_PROMPT=            # set to "1" in prod to refuse generic fallback
+WEBHOOK_RATE_WINDOW_MS=         # default 60000
+WEBHOOK_RATE_MAX=               # default 30 inbound messages per sender per window
+
+# Observability (Sentry)
+SENTRY_DSN=                     # server/edge runtime DSN
+NEXT_PUBLIC_SENTRY_DSN=         # same DSN exposed to the browser bundle
+
+# App
+NEXT_PUBLIC_APP_URL=
+```
+
+---
+
+## Phase 1.5 P0 fixes (applied)
+
+1. **ABSTAIN no longer locks AI out forever.** `src/lib/ai-handler.ts` ABSTAIN path no longer sets `manually_set_human=true` or stamps `last_human_message_at`. The conversation still flips to HUMAN with `ai_abstained=true` for the inbox indicator, but the 30-day reactivation window remains intact.
+2. **Push-to-CRM idempotency.** `src/app/api/conversations/[id]/push-to-crm/route.ts` now acquires an atomic lock via a conditional `UPDATE conversations SET pushed_by_user_id=…, pushed_to_crm_at=… WHERE id=… AND pushed_to_crm=false AND pushed_by_user_id IS NULL`. Concurrent clicks race here; the loser returns 409.
+3. **Push-to-CRM body validation.** Replaces `as PushBody` with a `validatePushBody` runtime check (lengths, types, numeric ranges). Returns 400 on bad input.
+4. **MySQL writes wrapped.** Each of the three writes (person upsert, person id lookup, deal insert) is now in its own try/catch. On failure: `releaseLock()` then a 502 with `step` and `details` so the modal can surface what broke.
+5. **`person_id` null guard.** If the post-insert SELECT returns no row, the deal is NOT inserted; lock is released and the route returns 502.
+6. **Supabase update after CRM success hard-fails.** Returns 502 with `crm_deal_id` in the body so the UI can recover (deal exists in CRM but Supabase didn't get the linkage).
+7. **Qualification preserve-existing.** `applyQualificationUpdates` in `src/lib/contact-merge.ts` only writes when the contact's current field is null. One bad LLM extraction can no longer overwrite a confirmed value.
+8. **Brand-prompt fallback safety net.** `getBrandSystemPrompt` now always logs a warning when falling back; if `STRICT_BRAND_PROMPT=1`, it throws `MissingBrandPromptError`. The AI handler catches that and ABSTAINs instead of sending generic copy on a brand that's expected to have its own prompt.
+9. **Webhook per-sender rate limit.** `src/lib/rate-limit.ts` is an in-memory token bucket keyed by `(channel, brand, sender)`. Defaults: 30 inbound messages per 60 s. When tripped: the inbound message is still stored and `needs_human_reply` flipped, but the AI call is skipped — protects against Groq bill spikes and Meta-API throttle from a runaway loop. Best-effort per-instance; a Redis-backed limiter is on the P1 list.
+10. **Single-conversation stage refresh.** `POST /api/conversations/refresh-stages?conversation_id=<uuid>` refreshes one deal; the DetailRail CRM section now has a "Refresh stage from CRM" button that calls it.
+
+### Still TODO from the original P0 list
+
+- **`crm_stage_name` cache freshness** — the refresh button helps but a true fix needs either polling on focus or a CRM→Supabase webhook.
+
+Deferred — needs a CRM-side change.
+
+---
+
+## Phase 1.6 — Observability + tokens out of DB
+
+### Sentry
+
+`@sentry/nextjs` is now wired. Three runtime configs:
+
+- `sentry.client.config.ts` — browser, gated on `NEXT_PUBLIC_SENTRY_DSN`
+- `sentry.server.config.ts` — Node.js serverless, gated on `SENTRY_DSN`
+- `sentry.edge.config.ts` — Edge runtime, gated on `SENTRY_DSN`
+
+`instrumentation.ts` loads the runtime-appropriate config when Next.js starts (`experimental.instrumentationHook = true` in `next.config.mjs`). When the DSN env vars are unset the SDK no-ops, so local dev stays quiet.
+
+`Sentry.captureException` is called from:
+
+- `src/app/api/webhook/route.ts` — top-level POST catch + both `waitUntil` AI-handler catches (WhatsApp + Instagram), tagged with `component`, `channel`, `brand`, `conversation_id`.
+- `src/lib/ai-handler.ts` — Meta send failures.
+- `src/app/api/conversations/[id]/push-to-crm/route.ts` — each of the four error paths (`person_insert`, `person_lookup`, `deal_insert`, `supabase_update`), tagged with `step` so Sentry groups them per stage.
+
+`SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_DSN` are surfaced in **/admin → System → Environment variables** under a new "Observability (Sentry)" group, so admins see at a glance whether monitoring is wired.
+
+### Tokens moved out of the database
+
+`brand_channels.access_token` is no longer read or written by the application. Tokens are read at send time from env vars whose suffix is derived from the brand's display name via `brandToEnvKey()` and persisted to `brand_settings.token_env_suffix`:
+
+```
+WHATSAPP_TOKEN_<SUFFIX>     e.g. WHATSAPP_TOKEN_TBS, WHATSAPP_TOKEN_RSP
+INSTAGRAM_TOKEN_<SUFFIX>    e.g. INSTAGRAM_TOKEN_TBS, INSTAGRAM_TOKEN_RSP
+```
+
+Helpers in `src/lib/brand-channels.ts`:
+
+- `tokenEnvKey(brand, channel)` — returns the env-var name for a brand+channel.
+- `getBrandToken(brand, channel)` — reads the env var, returns `null` if unset.
+- `getBrandChannel(supabase, brand, channel)` — returns `external_account_id` + `display_name` from the row, paired with the token from env. Returns `null` if either piece is missing.
+- `getBrandFromExternalId(supabase, externalAccountId, channel)` — reverse lookup used by the webhook; no longer returns a token.
+
+API surface changes:
+
+- `GET /api/brand-channels` — drops `access_token_preview`. Returns `token_env_key` and `token_env_set` (boolean) so the UI can render a "env set / env missing" pill.
+- `PATCH /api/brand-channels/[id]` — rejects `access_token` payloads with a 400 explaining the new flow. Still accepts `external_account_id` changes; if the env token is set we re-validate against Meta, otherwise we save the row and warn.
+- `POST /api/onboarding/channel` — no longer accepts an `access_token` body field. Accepts an optional `display_name` (falls back to a CRM `pipelines.name` lookup) and persists `brand_settings.token_env_suffix = brandToEnvKey(display_name)`. Validates against Meta only when the env token is set; otherwise the row is saved with a `warning` field in the response.
+- Admin **Channels** tab — token field is gone. Each row shows `Token: WHATSAPP_TOKEN_<SUFFIX>` with a green "env set" or red "env missing" pill. The Connect-channel modal live-checks the suffix via `brandToEnvKey()` and points the admin to Vercel env settings.
+
+DB cleanup: `migrations/2026_05_drop_brand_channel_tokens.sql` drops the now-unused `access_token` column; `migrations/2026_05_brand_env_suffix.sql` adds `brand_settings.token_env_suffix` and defensively drops any leftover brand CHECK constraints. Run after all `WHATSAPP_TOKEN_<SUFFIX>` / `INSTAGRAM_TOKEN_<SUFFIX>` env vars are populated in production.
+
+### Rotating a token
+
+1. Generate a new token in Meta Business Manager.
+2. Update `WHATSAPP_TOKEN_<SUFFIX>` / `INSTAGRAM_TOKEN_<SUFFIX>` in your Vercel project → Settings → Environment Variables. The exact suffix is visible in the Channels tab row (`Token:` column).
+3. Redeploy (Vercel does this automatically for non-Preview envs on save).
+4. Hard-refresh `/admin → Channels` — the pill should flip back to "env set".
+
+No DB write, no app restart beyond the redeploy, no token ever touches Postgres.
+
+---
+
+## Brand identifier convention
+
+There are **two distinct identifiers** for every brand. Keep them straight when reading the code.
+
+| Concept | Source of truth | Format | Used by |
+|---|---|---|---|
+| Brand id | `brand_channels.brand`, `conversations.brand`, `user_access.brand`, etc. | Free-text. In production this is the CRM `pipelines.id` as a string (e.g. `'67'`, `'58'`). Legacy rows may still hold `'TBS'` / `'RD'`. | Webhook routing, conversation FKs, CRM push pipeline resolver, RLS policies. |
+| Token env suffix | `brand_settings.token_env_suffix` (computed once at onboarding) | Uppercased letters + digits, derived from the brand's display name via `brandToEnvKey()`. e.g. `TBS`, `RSP`, `AURAMIST`. | Building `WHATSAPP_TOKEN_<SUFFIX>` / `INSTAGRAM_TOKEN_<SUFFIX>` env-var names. |
+
+The brand id is whatever the CRM gives us; the env suffix is a deterministic, human-readable label derived from the brand's display name. They're decoupled on purpose: the CRM owns the brand id, your Vercel env owns the tokens, and `brand_settings.token_env_suffix` bridges the two.
+
+There is **no CHECK constraint** on any `brand` column. The original `'TBS' | 'RD'` enum was dropped in `migrations/brands_from_pipelines.sql`; `migrations/2026_05_brand_env_suffix.sql` defensively re-drops any remaining brand constraints across every brand-bearing table.
+
+### How `brandToEnvKey` derives the suffix
+
+`src/lib/brand-env.ts` exposes a pure isomorphic function:
+
+```ts
+brandToEnvKey(name: string): string
+```
+
+Rules:
+1. Trim, then collapse non-alphanumeric runs into spaces.
+2. Split on whitespace.
+3. Single word → uppercase the entire word. Multiple words → first character of each word, uppercased.
+4. Strip anything that isn't `[A-Z0-9]` (defensive).
+5. Truncate to 10 characters.
+
+Examples:
+
+| Display name | Suffix | WhatsApp env var |
+|---|---|---|
+| `The Bride Side` | `TBS` | `WHATSAPP_TOKEN_TBS` |
+| `Revaah Decor` | `RD` | `WHATSAPP_TOKEN_RD` |
+| `Rahul Saharan Photography` | `RSP` | `WHATSAPP_TOKEN_RSP` |
+| `The Wedding Minimalist` | `TWM` | `WHATSAPP_TOKEN_TWM` |
+| `Auramist` | `AURAMIST` | `WHATSAPP_TOKEN_AURAMIST` |
+
+The same suffix is used for both channels — `WHATSAPP_TOKEN_<SUFFIX>` and `INSTAGRAM_TOKEN_<SUFFIX>` share `<SUFFIX>` for a given brand.
+
+### Resolution at runtime
+
+`src/lib/brand-channels.ts` exposes:
+
+- `tokenEnvKeyForSuffix(channel, suffix)` — pure: `'WHATSAPP_TOKEN_' + suffix` or `'INSTAGRAM_TOKEN_' + suffix`.
+- `resolveTokenEnvSuffix(supabase, brand)` — async: reads `brand_settings.token_env_suffix`. Falls back to `String(brand).toUpperCase()` when null. The fallback keeps legacy `brand='TBS'` / `brand='RD'` deployments working without a backfill.
+- `resolveTokenEnvKey(supabase, brand, channel)` — async: composes the two above.
+- `getBrandToken(supabase, brand, channel)` — async: returns `process.env[resolveTokenEnvKey(...)]` or `null`.
+- `getBrandChannel(supabase, brand, channel)` — async: returns `{ external_account_id, access_token, display_name }` or `null`.
+
+The suffix is computed and persisted **once** at channel-connect time in `POST /api/onboarding/channel`:
+1. The wizard passes the brand's display name (`display_name` body field).
+2. The route falls back to a CRM `pipelines.name` lookup if `display_name` is missing.
+3. `brandToEnvKey(displayName)` produces the suffix.
+4. `brand_settings` is upserted (`{ brand, token_env_suffix }`).
+5. The Meta credential pair is validated against the env token.
+6. The `brand_channels` row is inserted.
+
+If `brand_settings.token_env_suffix` already exists and isn't equal to the legacy fallback, it's preserved — a CRM-side rename will not silently rotate the env-var key out from under a deployed env.
+
+### Per-brand env vars (token + optional pipeline mapping)
+
+| Env var | Purpose | Required? |
+|---|---|---|
+| `WHATSAPP_TOKEN_<SUFFIX>` | Long-lived Meta Cloud API system-user token | If the brand has a WhatsApp channel |
+| `INSTAGRAM_TOKEN_<SUFFIX>` | Page access token covering the IG Business Account | If the brand has an Instagram channel |
+| `CRM_PIPELINE_<BRAND>_ID` | Numeric CRM pipeline id (alternative to a `brand_pipelines` Supabase row) | Optional |
+| `CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID` | Numeric CRM stage id new deals start in | Optional |
+
+Note that `<SUFFIX>` (token env vars) and `<BRAND>` (CRM pipeline env vars) come from different sources — the suffix is `brand_settings.token_env_suffix`, while `<BRAND>` in the CRM-pipeline env vars is `String(brand).toUpperCase()` (the brand id, not the display-name-derived suffix). In practice for most deployments they'll be the same string, but they don't have to be.
+
+### Global env vars (not per-brand)
+
+| Env var | Purpose |
+|---|---|
+| `WHATSAPP_APP_SECRET` | HMAC verification for inbound webhook |
+| `WHATSAPP_VERIFY_TOKEN` | GET-handshake token for the WA webhook subscription |
+| `INSTAGRAM_VERIFY_TOKEN` | GET-handshake token for the IG webhook subscription (can be the same string as WA's) |
+| `CRM_DEFAULT_INITIAL_STAGE_ID` | Fallback initial stage when neither `brand_pipelines` row nor `CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID` is set |
+
+### Copy-paste env block — example brands
+
+```
+# Per-brand tokens. <SUFFIX> = brandToEnvKey(display_name).
+# Examples: 'The Bride Side' → TBS, 'Revaah Decor' → RD,
+#           'Rahul Saharan Photography' → RSP,
+#           'The Wedding Minimalist' → TWM, 'Auramist' → AURAMIST.
+WHATSAPP_TOKEN_TBS=
+INSTAGRAM_TOKEN_TBS=
+WHATSAPP_TOKEN_RD=
+INSTAGRAM_TOKEN_RD=
+WHATSAPP_TOKEN_RSP=
+INSTAGRAM_TOKEN_RSP=
+WHATSAPP_TOKEN_TWM=
+INSTAGRAM_TOKEN_TWM=
+WHATSAPP_TOKEN_AURAMIST=
+INSTAGRAM_TOKEN_AURAMIST=
+```
+
+Adding a new brand:
+1. Read the display name the admin will pick from the CRM.
+2. Compute the suffix with `brandToEnvKey(name)` — or just open the connect modal in `/admin → Channels` and copy the suffix it displays.
+3. Add `WHATSAPP_TOKEN_<SUFFIX>` and/or `INSTAGRAM_TOKEN_<SUFFIX>` to Vercel.
+4. Redeploy, then connect the channel in the admin UI.
+
+No code change needed for new brands.
+
+---
+
+## Channel-connection flow (current)
+
+The signup wizard at `/signup` has three steps — **Account → Brands → Review** (`src/app/signup/SignupClient.tsx:10`). There is no "Connect WhatsApp" step in signup any more; channel creation is admin-only. Agents inherit whichever channels an admin has already wired up for the brands they pick.
+
+### Connecting a new brand's WhatsApp / Instagram (admin-only)
+
+1. **Go to `/admin → Channels` → "+ Connect channel" first** to see the exact env var name.
+   - Pick the brand (sourced from CRM pipelines).
+   - Pick WhatsApp or Instagram.
+   - The modal calls `GET /api/brand-channels/env-check?display_name=…&channel=…` and renders the exact env-var name (e.g. `WHATSAPP_TOKEN_RSP`) with an "env set / env missing" pill.
+
+2. **Set the env var in Vercel if it's missing.**
+   - Vercel project → Settings → Environment Variables → Add.
+   - Name: exactly the suffix the modal shows you (e.g. `WHATSAPP_TOKEN_RSP`).
+   - Value: long-lived system-user token from Meta Business Manager.
+   - Apply to Production (and Preview if you want it on PR deploys).
+   - Redeploy — Vercel triggers automatically on env-var save.
+
+3. **Come back to the modal and complete the form.**
+   - Enter the Meta account ID (WA phone number ID or IG Business Account ID).
+   - Submit. If the env token is present we validate the credential pair against Meta and store the verified display name; if not, we save the row anyway and surface a warning banner asking you to finish step 2. We also upsert `brand_settings.token_env_suffix` so the env-key resolution is persistent.
+
+4. **Verify in the list.**
+   - Each row shows `Token: WHATSAPP_TOKEN_<SUFFIX>` with an "env set / env missing" pill so you can confirm at a glance.
+   - If the pill says "env missing", finish step 2 and redeploy; then refresh the page.
+
+5. **Rotate later** by editing the env var in Vercel and redeploying. The Channels tab "Edit" button only edits the account ID; the rotate-token instruction box points you back to Vercel.
+
+### Why this flow
+
+Tokens never touch Postgres, so a Supabase compromise can't leak Meta credentials. Rotation is a Vercel-only operation — no DB writes, no app restart, no token in the UI. The trade-off is one extra step (env var first, then UI) when onboarding a new brand. The in-modal env-check makes that step impossible to forget.
+
+### Endpoints involved
+
+- `GET /api/brand-channels` — list rows + per-row `token_env_suffix` + `token_env_key` + `token_env_set` (resolved via `brand_settings.token_env_suffix`, legacy fallback if null).
+- `GET /api/brand-channels/env-check?display_name=…&channel=…` (preferred) or `?brand=…&channel=…` — admin-only; returns `{ token_env_suffix, token_env_key, token_env_set }`. The `display_name` mode computes the suffix via `brandToEnvKey()`; the `brand` mode looks it up from `brand_settings`.
+- `POST /api/onboarding/channel` — admin creates the row; upserts `brand_settings.token_env_suffix`; validates against Meta when the env token is set; returns `{ token_env_key, token_env_suffix, warning }`.
+- `PATCH /api/brand-channels/[id]` — admin edits account ID; re-validates against Meta when the env token is set. Rejects `access_token` payloads with a 400 explaining the new flow.
+- `DELETE /api/brand-channels/[id]` — admin disconnects.
+

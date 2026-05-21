@@ -5,6 +5,11 @@ import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
+import {
+  resolveTokenEnvKey,
+  resolveTokenEnvSuffix,
+} from '@/lib/brand-channels';
+import type { Brand, Channel } from '@/types';
 
 async function requireAdmin() {
   const cookieStore = cookies();
@@ -29,12 +34,6 @@ async function requireAdmin() {
   return appUser;
 }
 
-function maskToken(token: string): string {
-  if (!token) return '';
-  if (token.length <= 8) return '••••';
-  return `${token.slice(0, 4)}…${token.slice(-4)}`;
-}
-
 export async function GET() {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -47,7 +46,6 @@ export async function GET() {
       brand,
       channel,
       external_account_id,
-      access_token,
       display_name,
       configured_at,
       updated_at,
@@ -57,19 +55,31 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rows = (data ?? []).map((r: any) => ({
-    id: r.id,
-    brand: r.brand,
-    channel: r.channel,
-    external_account_id: r.external_account_id,
-    access_token_preview: maskToken(r.access_token ?? ''),
-    display_name: r.display_name,
-    configured_at: r.configured_at,
-    updated_at: r.updated_at,
-    configured_by_name: r.configured_by?.name ?? null,
-    configured_by_email: r.configured_by?.email ?? null,
-  }));
+  // Resolve each row's env-var key + presence via brand_settings.
+  // We do this per row (small N — usually 1–10 brand_channels rows total)
+  // rather than pre-fetching the whole brand_settings table to keep the
+  // logic in one place.
+  const rows = await Promise.all(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (data ?? []).map(async (r: any) => {
+      const suffix = await resolveTokenEnvSuffix(supabase, r.brand as Brand);
+      const tokenEnvKey = await resolveTokenEnvKey(supabase, r.brand as Brand, r.channel as Channel);
+      return {
+        id: r.id,
+        brand: r.brand,
+        channel: r.channel,
+        external_account_id: r.external_account_id,
+        display_name: r.display_name,
+        configured_at: r.configured_at,
+        updated_at: r.updated_at,
+        configured_by_name: r.configured_by?.name ?? null,
+        configured_by_email: r.configured_by?.email ?? null,
+        token_env_suffix: suffix,
+        token_env_key: tokenEnvKey,
+        token_env_set: !!process.env[tokenEnvKey],
+      };
+    })
+  );
 
   return NextResponse.json(rows);
 }

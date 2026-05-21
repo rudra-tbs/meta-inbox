@@ -22,7 +22,7 @@ interface AdminClientProps {
 
 const TABS: Array<{ id: TabId; label: string; sub: string }> = [
   { id: 'users',     label: 'Users',          sub: 'Roles, access, deactivation, invites + per-agent metrics' },
-  { id: 'channels',  label: 'Channels',       sub: 'Connect WhatsApp + Instagram, rotate tokens' },
+  { id: 'channels',  label: 'Channels',       sub: 'Connect WhatsApp + Instagram (tokens via Vercel env vars)' },
   { id: 'pipelines', label: 'Pipelines',      sub: 'Brand → CRM pipeline mapping' },
   { id: 'contexts',  label: 'Brand contexts', sub: 'Per-brand AI system prompts' },
   { id: 'templates', label: 'Templates',      sub: 'Reply templates agents pull via /' },

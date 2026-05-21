@@ -31,6 +31,10 @@ const ENV_GROUPS: Array<{ group: string; keys: string[] }> = [
     keys: ['CRM_DEFAULT_INITIAL_STAGE_ID'],
   },
   {
+    group: 'Observability (Sentry)',
+    keys: ['SENTRY_DSN', 'NEXT_PUBLIC_SENTRY_DSN'],
+  },
+  {
     group: 'App',
     keys: ['NEXT_PUBLIC_APP_URL'],
   },

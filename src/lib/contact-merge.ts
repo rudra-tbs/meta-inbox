@@ -264,15 +264,27 @@ async function applyQualificationUpdates(
   contactId: string,
   qual: Record<string, string | null | undefined>
 ) {
+  // Preserve-existing: a single LLM hallucination must not flip an
+  // already-confirmed field. We only write a qualification field when
+  // the contact's current value is null. Identifiers (phone/IG) follow
+  // the same rule — the merge path in updateContactFromQualification
+  // is what handles legitimate identifier changes.
+  const { data: current } = await supabase
+    .from('contacts')
+    .select('city, wedding_date, guest_count, budget_range, service_type, name, phone, instagram_id')
+    .eq('id', contactId)
+    .maybeSingle();
+  if (!current) return;
+
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  const fields = ['city', 'wedding_date', 'guest_count', 'budget_range', 'service_type', 'name'];
+  const fields = ['city', 'wedding_date', 'guest_count', 'budget_range', 'service_type', 'name'] as const;
   for (const f of fields) {
-    if (qual[f]) updates[f] = qual[f];
+    if (qual[f] && !current[f]) updates[f] = qual[f];
   }
   const normPhone = normalizePhone(qual.phone);
   const normIG = normalizeInstagramHandle(qual.instagram_id);
-  if (normPhone) updates.phone = normPhone;
-  if (normIG) updates.instagram_id = normIG;
+  if (normPhone && !current.phone) updates.phone = normPhone;
+  if (normIG && !current.instagram_id) updates.instagram_id = normIG;
 
   if (Object.keys(updates).length > 1) {
     await supabase.from('contacts').update(updates).eq('id', contactId);

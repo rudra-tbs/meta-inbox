@@ -1,5 +1,5 @@
 import { createServerClient } from '@/lib/supabase';
-import { getBrandChannel } from '@/lib/brand-channels';
+import { getBrandChannel, getBrandToken, resolveTokenEnvKey } from '@/lib/brand-channels';
 import type { Brand } from '@/types';
 
 interface SendOptions {
@@ -38,8 +38,9 @@ async function postMessage(to: string, text: string, opts: SendOptions): Promise
   return data?.messages?.[0]?.id ?? null;
 }
 
-// Brand-aware send. Looks up the brand's phone_number_id + access_token
-// from brand_channels and posts the message.
+// Brand-aware send. Looks up the brand's phone_number_id from brand_channels
+// and reads the long-lived access token from the environment (env var
+// WHATSAPP_TOKEN_<BRAND>). Tokens are intentionally NOT stored in Postgres.
 export async function sendWhatsAppMessage(
   brand: Brand,
   to: string,
@@ -48,7 +49,13 @@ export async function sendWhatsAppMessage(
   const supabase = createServerClient();
   const creds = await getBrandChannel(supabase, brand, 'WA');
   if (!creds) {
-    throw new Error(`WhatsApp not configured for brand ${brand}`);
+    // Distinguish missing-row from missing-env so the operator knows which to fix.
+    const token = await getBrandToken(supabase, brand, 'WA');
+    if (!token) {
+      const envKey = await resolveTokenEnvKey(supabase, brand, 'WA');
+      throw new Error(`WhatsApp token not set for brand ${brand} — configure env var ${envKey}`);
+    }
+    throw new Error(`WhatsApp not configured for brand ${brand} — add a brand_channels row from /admin → Channels`);
   }
   return postMessage(to, text, {
     phoneNumberId: creds.external_account_id,

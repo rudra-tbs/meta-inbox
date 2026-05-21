@@ -8,6 +8,8 @@ import { resolveConversation } from '@/lib/ai-mode';
 import { handleAIResponse } from '@/lib/ai-handler';
 import { verifyWebhookSignature } from '@/lib/webhook-verify';
 import { getBrandFromExternalId } from '@/lib/brand-channels';
+import { checkInboundRate } from '@/lib/rate-limit';
+import * as Sentry from '@sentry/nextjs';
 import type { Conversation } from '@/types';
 
 // GET: Webhook verification for both WhatsApp and Instagram. Meta sends the
@@ -182,10 +184,27 @@ async function handleOneMessage(
     return;
   }
 
+  // Per-sender rate limit: store the message but skip the AI / Groq call
+  // when a single number is flooding us. The RM still sees the messages
+  // in the inbox and can reply manually. Keyed by (brand, channel, sender).
+  const rate = checkInboundRate(`WA:${brand}:${fromPhone}`);
+  if (!rate.allowed) {
+    console.warn(`[Webhook] Rate-limited AI for WA:${brand}:${fromPhone} — reset in ${rate.resetMs}ms`);
+    await supabase
+      .from('conversations')
+      .update({ needs_human_reply: true, updated_at: new Date().toISOString() })
+      .eq('id', conversation.id);
+    return;
+  }
+
   // Always run AI handler — it decides whether to send or save as suggestion.
   waitUntil(
     handleAIResponse(supabase, conversation as Conversation, textBody!).catch((err) => {
       console.error('AI handler error:', err);
+      Sentry.captureException(err, {
+        tags: { component: 'ai-handler', channel: 'WA', brand },
+        extra: { conversation_id: conversation.id },
+      });
     })
   );
 }
@@ -290,9 +309,23 @@ async function handleInstagramEvent(
     return;
   }
 
+  const rate = checkInboundRate(`IG:${brand}:${senderIgId}`);
+  if (!rate.allowed) {
+    console.warn(`[Webhook IG] Rate-limited AI for IG:${brand}:${senderIgId} — reset in ${rate.resetMs}ms`);
+    await supabase
+      .from('conversations')
+      .update({ needs_human_reply: true, updated_at: new Date().toISOString() })
+      .eq('id', conversation.id);
+    return;
+  }
+
   waitUntil(
     handleAIResponse(supabase, conversation as Conversation, text!).catch((err) => {
       console.error('AI handler error (IG):', err);
+      Sentry.captureException(err, {
+        tags: { component: 'ai-handler', channel: 'IG', brand },
+        extra: { conversation_id: conversation.id },
+      });
     }),
   );
 }
@@ -387,6 +420,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('Webhook error:', err);
+    Sentry.captureException(err, { tags: { component: 'webhook' } });
     // Return 200 so Meta doesn't enter a retry storm on a bug. We still log.
     return NextResponse.json({ ok: true });
   }

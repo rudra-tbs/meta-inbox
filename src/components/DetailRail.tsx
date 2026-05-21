@@ -59,6 +59,7 @@ export default function DetailRail({ conversation, open, onClose, onConversation
   const [tagInput, setTagInput] = useState('');
   const [taxonomy, setTaxonomy] = useState<TaxonomyEntry[]>([]);
   const [events, setEvents] = useState<ConversationEvent[]>([]);
+  const [refreshingStage, setRefreshingStage] = useState(false);
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load tag taxonomy once when the rail opens. Cheap query (~tens of rows
@@ -124,6 +125,23 @@ export default function DetailRail({ conversation, open, onClose, onConversation
 
   function removeTag(tag: string) {
     setTags((conversation.tags ?? []).filter((t) => t !== tag));
+  }
+
+  async function refreshStage() {
+    if (refreshingStage) return;
+    setRefreshingStage(true);
+    try {
+      await fetch(`/api/conversations/refresh-stages?conversation_id=${conversation.id}`, {
+        method: 'POST',
+      });
+      const r = await fetch(`/api/conversations/${conversation.id}`);
+      if (r.ok) {
+        const fresh = await r.json();
+        onConversationUpdate({ ...conversation, ...fresh });
+      }
+    } finally {
+      setRefreshingStage(false);
+    }
   }
 
   if (!open) return null;
@@ -252,6 +270,15 @@ export default function DetailRail({ conversation, open, onClose, onConversation
         <Section title="CRM">
           <InfoRow label="Deal" value={`#${conversation.crm_deal_id}`} />
           <InfoRow label="Stage" value={conversation.crm_stage_name} />
+          <div className="pt-1.5">
+            <button
+              onClick={refreshStage}
+              disabled={refreshingStage}
+              className="text-[11px] text-text-secondary hover:text-text-default disabled:opacity-50"
+            >
+              {refreshingStage ? 'Refreshing…' : 'Refresh stage from CRM'}
+            </button>
+          </div>
         </Section>
       )}
 

@@ -8,12 +8,14 @@ interface BrandChannelRow {
   brand: string;
   channel: string;
   external_account_id: string;
-  access_token_preview: string;
   display_name: string | null;
   configured_at: string;
   updated_at: string;
   configured_by_name: string | null;
   configured_by_email: string | null;
+  token_env_suffix: string;
+  token_env_key: string;
+  token_env_set: boolean;
 }
 
 interface OnboardingBrand { id: string; name: string; subtitle: string }
@@ -30,14 +32,16 @@ const CHANNEL_TONE: Record<string, string> = {
 };
 
 // Single tab covering every channel-credential operation an admin needs:
-// list connected, edit credentials, disconnect, and connect a new channel.
-// Replaces the read-only /admin "Channel configs" tab AND the
-// /settings "All channels" tab.
+// list connected, edit account ids, disconnect, and connect a new channel.
+// Tokens themselves live in Vercel env vars (WHATSAPP_TOKEN_<BRAND> /
+// INSTAGRAM_TOKEN_<BRAND>) — this tab links account ids to brands and
+// reports whether the matching env var is set.
 export default function ChannelsTab() {
   const [rows, setRows] = useState<BrandChannelRow[]>([]);
   const [state, setState] = useState<OnboardingState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [connectOpen, setConnectOpen] = useState(false);
 
@@ -90,6 +94,27 @@ export default function ChannelsTab() {
         </Button>
       </div>
 
+      {/* Persistent how-this-works banner — admins land here looking for a
+          token field. Spell out the new flow once so we don't keep
+          surprising them. */}
+      <div className="bg-canvas border border-border-default rounded-md px-3 py-2.5 text-[12px] text-text-secondary">
+        <p className="font-medium text-text-default mb-1">How channel auth works</p>
+        <p>
+          Connect a brand by adding its Meta <strong>account ID</strong> (WhatsApp phone number ID
+          or IG Business Account ID) below. The matching access token lives in your
+          Vercel environment as
+          <code className="font-mono"> WHATSAPP_TOKEN_&lt;BRAND&gt; </code>or
+          <code className="font-mono"> INSTAGRAM_TOKEN_&lt;BRAND&gt;</code>.
+          To rotate, change the env var in Vercel and redeploy.
+        </p>
+      </div>
+
+      {notice && (
+        <div className="bg-warning-soft border border-warning/20 text-warning text-xs px-3 py-2 rounded-md">
+          {notice}
+        </div>
+      )}
+
       {error && <div className="bg-danger-soft border border-danger/20 text-danger text-xs px-3 py-2 rounded-md">{error}</div>}
 
       <div className="rounded-lg border border-border-default bg-elevated overflow-hidden">
@@ -122,7 +147,11 @@ export default function ChannelsTab() {
           state={state}
           existingRows={rows}
           onClose={() => setConnectOpen(false)}
-          onConnected={async () => { setConnectOpen(false); await load(); }}
+          onConnected={async (warning) => {
+            setConnectOpen(false);
+            setNotice(warning ?? null);
+            await load();
+          }}
         />
       )}
     </div>
@@ -147,7 +176,6 @@ function ChannelRow({
   onDelete: () => void;
 }) {
   const [accountId, setAccountId] = useState(row.external_account_id);
-  const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -157,7 +185,6 @@ function ChannelRow({
     try {
       const payload: Record<string, string> = {};
       if (accountId.trim() !== row.external_account_id) payload.external_account_id = accountId.trim();
-      if (token.trim()) payload.access_token = token.trim();
       if (Object.keys(payload).length === 0) {
         setError('Nothing to update.');
         return;
@@ -190,7 +217,17 @@ function ChannelRow({
           </div>
           <div className="text-[11px] text-text-muted mt-1 space-y-0.5">
             <div>Account ID: <span className="font-mono">{row.external_account_id}</span></div>
-            <div>Token: <span className="font-mono">{row.access_token_preview}</span></div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span>Token:</span>
+              <span className="font-mono">{row.token_env_key}</span>
+              <span className={`inline-flex items-center gap-1 px-1.5 py-0 rounded border ${
+                row.token_env_set
+                  ? 'bg-success-soft text-success border-success/20'
+                  : 'bg-danger-soft text-danger border-danger/20'
+              }`}>
+                {row.token_env_set ? 'env set' : 'env missing'}
+              </span>
+            </div>
             <div>
               Configured {new Date(row.configured_at).toLocaleDateString()} by {row.configured_by_name ?? 'unknown'}
               {row.updated_at && row.updated_at !== row.configured_at && (
@@ -217,17 +254,12 @@ function ChannelRow({
               className="w-full px-3 py-2 border border-border-default rounded-md text-sm text-text-default font-mono focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
             />
           </div>
-          <div>
-            <label className="block text-[11px] font-medium text-text-default mb-1">Access token</label>
-            <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Leave blank to keep current"
-              className="w-full px-3 py-2 border border-border-default rounded-md text-sm text-text-default focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
-            />
-            <p className="text-[11px] text-text-muted mt-1">
-              Re-validated against Meta before saving.
+          <div className="rounded-md border border-border-default bg-canvas p-3 text-[11px] text-text-secondary">
+            <p className="font-medium text-text-default mb-1">Access token</p>
+            <p>
+              Tokens live in environment variables, not the database. To rotate this
+              brand&apos;s token, update <span className="font-mono">{row.token_env_key}</span> in
+              your Vercel project settings and redeploy.
             </p>
           </div>
           {error && <div className="text-[11px] text-danger">{error}</div>}
@@ -252,25 +284,47 @@ function ConnectChannelModal({
   state: OnboardingState | null;
   existingRows: BrandChannelRow[];
   onClose: () => void;
-  onConnected: () => void;
+  onConnected: (warning?: string | null) => void;
 }) {
   const [brand, setBrand] = useState('');
   const [channel, setChannel] = useState<'WA' | 'IG'>('WA');
   const [externalId, setExternalId] = useState('');
-  const [accessToken, setAccessToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Live env-var status — null = not checked yet, true/false = result.
+  const [envStatus, setEnvStatus] = useState<{ key: string; set: boolean } | null>(null);
 
   const brands = state?.brands ?? [];
   const conflict = brand && existingRows.some((r) => r.brand === brand && r.channel === channel);
+  const selectedBrandName = brand ? brands.find((b) => b.id === brand)?.name ?? '' : '';
+
+  // Hit /api/brand-channels/env-check with the brand's DISPLAY NAME (not
+  // the pipeline id) so the admin sees the human-readable env var key
+  // — e.g. WHATSAPP_TOKEN_RSP for "Rahul Saharan Photography", not
+  // WHATSAPP_TOKEN_67. Computed via brandToEnvKey() server-side.
+  useEffect(() => {
+    if (!brand || !selectedBrandName) { setEnvStatus(null); return; }
+    let cancelled = false;
+    setEnvStatus(null);
+    fetch(
+      `/api/brand-channels/env-check?display_name=${encodeURIComponent(selectedBrandName)}&channel=${channel}`,
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setEnvStatus({ key: data.token_env_key, set: !!data.token_env_set });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [brand, channel, selectedBrandName]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     if (!brand) { setError('Pick a brand'); return; }
     if (conflict) { setError(`${brand} · ${channel} is already connected. Edit it instead.`); return; }
-    if (!externalId.trim() || !accessToken.trim()) {
-      setError('Account ID and access token are required');
+    if (!externalId.trim()) {
+      setError('Account ID is required');
       return;
     }
     setBusy(true);
@@ -282,7 +336,7 @@ function ConnectChannelModal({
           brand,
           channel,
           external_account_id: externalId.trim(),
-          access_token: accessToken.trim(),
+          display_name: selectedBrandName,
         }),
       });
       const data = await res.json();
@@ -290,7 +344,9 @@ function ConnectChannelModal({
         setError(data?.error ?? 'Could not connect');
         return;
       }
-      onConnected();
+      // Surface backend's warning (e.g. env var still missing) to the parent
+      // so it stays visible after the modal closes.
+      onConnected(typeof data?.warning === 'string' ? data.warning : null);
     } catch {
       setError('Network error. Try again.');
     } finally {
@@ -369,19 +425,39 @@ function ConnectChannelModal({
             </p>
           </div>
 
-          <div>
-            <label className="block text-[11px] font-medium text-text-secondary mb-1">Access token</label>
-            <input
-              type="password"
-              value={accessToken}
-              onChange={(e) => setAccessToken(e.target.value)}
-              placeholder="EAAG…"
-              className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default focus:outline-none focus:border-border-strong focus:ring-2 focus:ring-brand/15"
-            />
-            <p className="text-[11px] text-text-muted mt-1">
-              Long-lived system-user token. {channel === 'WA' && 'We verify it with Meta before saving.'}
-            </p>
-          </div>
+          {brand && envStatus && (
+            <div className={`rounded-md border p-3 text-[11px] ${
+              envStatus.set
+                ? 'border-success/20 bg-success-soft text-text-secondary'
+                : 'border-warning/20 bg-warning-soft text-text-secondary'
+            }`}>
+              <p className="font-medium text-text-default mb-1 flex items-center gap-2">
+                Access token
+                <span className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${
+                  envStatus.set
+                    ? 'bg-success-soft text-success border-success/30'
+                    : 'bg-danger-soft text-danger border-danger/30'
+                }`}>
+                  {envStatus.set ? 'env set' : 'env missing'}
+                </span>
+              </p>
+              {envStatus.set ? (
+                <p>
+                  <span className="font-mono">{envStatus.key}</span> is configured in
+                  this environment — saving now will validate the account ID against
+                  Meta before storing it.
+                </p>
+              ) : (
+                <p>
+                  To send and receive messages on this channel, add
+                  <span className="font-mono"> {envStatus.key} </span>
+                  to your Vercel environment variables and redeploy. You can still
+                  save the account ID now; the inbox will start working once the env
+                  var is in place.
+                </p>
+              )}
+            </div>
+          )}
 
           {error && (
             <div className="bg-danger-soft border border-danger/20 text-danger text-xs px-3 py-2 rounded-md">
@@ -392,8 +468,8 @@ function ConnectChannelModal({
 
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border-default">
           <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button variant="primary" size="sm" onClick={submit} disabled={busy || conflict || !brand || !externalId.trim() || !accessToken.trim()}>
-            {busy ? (channel === 'WA' ? 'Verifying with Meta…' : 'Saving…') : 'Connect & save'}
+          <Button variant="primary" size="sm" onClick={submit} disabled={busy || conflict || !brand || !externalId.trim()}>
+            {busy ? 'Saving…' : 'Connect & save'}
           </Button>
         </div>
       </div>

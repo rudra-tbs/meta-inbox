@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
@@ -13,7 +13,10 @@ interface DealStageRow {
   stage_name: string | null;
 }
 
-export async function POST() {
+// POST with optional ?conversation_id=<uuid> to refresh a single conversation
+// (used by the DetailRail refresh button). Without the param it refreshes
+// every conversation marked pushed_to_crm — admin/bulk job.
+export async function POST(request: NextRequest) {
   const cookieStore = cookies();
   const supabaseAuth = createSupabaseSSR(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,12 +40,17 @@ export async function POST() {
   const appUser = await getUserByAuthId(user.id);
   if (!appUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Get all conversations that have been pushed to CRM
-  const { data: conversations } = await supabase
+  const singleId = new URL(request.url).searchParams.get('conversation_id');
+
+  // Get the conversation(s) to refresh — either a single one (RM clicking
+  // the refresh button on a deal) or every pushed conversation (bulk job).
+  let query = supabase
     .from('conversations')
     .select('id, crm_deal_id')
     .eq('pushed_to_crm', true)
     .not('crm_deal_id', 'is', null);
+  if (singleId) query = query.eq('id', singleId);
+  const { data: conversations } = await query;
 
   if (!conversations || conversations.length === 0) {
     return NextResponse.json({ updated: 0 });
