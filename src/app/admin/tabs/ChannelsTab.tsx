@@ -31,14 +31,16 @@ const CHANNEL_TONE: Record<string, string> = {
 };
 
 // Single tab covering every channel-credential operation an admin needs:
-// list connected, edit credentials, disconnect, and connect a new channel.
-// Replaces the read-only /admin "Channel configs" tab AND the
-// /settings "All channels" tab.
+// list connected, edit account ids, disconnect, and connect a new channel.
+// Tokens themselves live in Vercel env vars (WHATSAPP_TOKEN_<BRAND> /
+// INSTAGRAM_TOKEN_<BRAND>) — this tab links account ids to brands and
+// reports whether the matching env var is set.
 export default function ChannelsTab() {
   const [rows, setRows] = useState<BrandChannelRow[]>([]);
   const [state, setState] = useState<OnboardingState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [connectOpen, setConnectOpen] = useState(false);
 
@@ -91,6 +93,27 @@ export default function ChannelsTab() {
         </Button>
       </div>
 
+      {/* Persistent how-this-works banner — admins land here looking for a
+          token field. Spell out the new flow once so we don't keep
+          surprising them. */}
+      <div className="bg-canvas border border-border-default rounded-md px-3 py-2.5 text-[12px] text-text-secondary">
+        <p className="font-medium text-text-default mb-1">How channel auth works</p>
+        <p>
+          Connect a brand by adding its Meta <strong>account ID</strong> (WhatsApp phone number ID
+          or IG Business Account ID) below. The matching access token lives in your
+          Vercel environment as
+          <code className="font-mono"> WHATSAPP_TOKEN_&lt;BRAND&gt; </code>or
+          <code className="font-mono"> INSTAGRAM_TOKEN_&lt;BRAND&gt;</code>.
+          To rotate, change the env var in Vercel and redeploy.
+        </p>
+      </div>
+
+      {notice && (
+        <div className="bg-warning-soft border border-warning/20 text-warning text-xs px-3 py-2 rounded-md">
+          {notice}
+        </div>
+      )}
+
       {error && <div className="bg-danger-soft border border-danger/20 text-danger text-xs px-3 py-2 rounded-md">{error}</div>}
 
       <div className="rounded-lg border border-border-default bg-elevated overflow-hidden">
@@ -123,7 +146,11 @@ export default function ChannelsTab() {
           state={state}
           existingRows={rows}
           onClose={() => setConnectOpen(false)}
-          onConnected={async () => { setConnectOpen(false); await load(); }}
+          onConnected={async (warning) => {
+            setConnectOpen(false);
+            setNotice(warning ?? null);
+            await load();
+          }}
         />
       )}
     </div>
@@ -256,19 +283,36 @@ function ConnectChannelModal({
   state: OnboardingState | null;
   existingRows: BrandChannelRow[];
   onClose: () => void;
-  onConnected: () => void;
+  onConnected: (warning?: string | null) => void;
 }) {
   const [brand, setBrand] = useState('');
   const [channel, setChannel] = useState<'WA' | 'IG'>('WA');
   const [externalId, setExternalId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Live env-var status — null = not checked yet, true/false = result.
+  const [envStatus, setEnvStatus] = useState<{ key: string; set: boolean } | null>(null);
 
   const brands = state?.brands ?? [];
   const conflict = brand && existingRows.some((r) => r.brand === brand && r.channel === channel);
-  const tokenEnvKey = brand
-    ? `${channel === 'IG' ? 'INSTAGRAM_TOKEN' : 'WHATSAPP_TOKEN'}_${brand.toUpperCase()}`
-    : '';
+
+  // Hit /api/brand-channels/env-check whenever the brand+channel pair
+  // changes so the admin sees env-set / env-missing live, before they
+  // commit. Reset to null while a new check is in flight so we don't
+  // render stale state.
+  useEffect(() => {
+    if (!brand) { setEnvStatus(null); return; }
+    let cancelled = false;
+    setEnvStatus(null);
+    fetch(`/api/brand-channels/env-check?brand=${encodeURIComponent(brand)}&channel=${channel}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setEnvStatus({ key: data.token_env_key, set: !!data.token_env_set });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [brand, channel]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -295,7 +339,9 @@ function ConnectChannelModal({
         setError(data?.error ?? 'Could not connect');
         return;
       }
-      onConnected();
+      // Surface backend's warning (e.g. env var still missing) to the parent
+      // so it stays visible after the modal closes.
+      onConnected(typeof data?.warning === 'string' ? data.warning : null);
     } catch {
       setError('Network error. Try again.');
     } finally {
@@ -374,15 +420,37 @@ function ConnectChannelModal({
             </p>
           </div>
 
-          {brand && (
-            <div className="rounded-md border border-border-default bg-canvas p-3 text-[11px] text-text-secondary">
-              <p className="font-medium text-text-default mb-1">Access token</p>
-              <p>
-                Tokens are NOT stored in the database. Set
-                <span className="font-mono"> {tokenEnvKey} </span>
-                in your Vercel project environment, then redeploy. The inbox will
-                pick it up automatically — no extra config here.
+          {brand && envStatus && (
+            <div className={`rounded-md border p-3 text-[11px] ${
+              envStatus.set
+                ? 'border-success/20 bg-success-soft text-text-secondary'
+                : 'border-warning/20 bg-warning-soft text-text-secondary'
+            }`}>
+              <p className="font-medium text-text-default mb-1 flex items-center gap-2">
+                Access token
+                <span className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${
+                  envStatus.set
+                    ? 'bg-success-soft text-success border-success/30'
+                    : 'bg-danger-soft text-danger border-danger/30'
+                }`}>
+                  {envStatus.set ? 'env set' : 'env missing'}
+                </span>
               </p>
+              {envStatus.set ? (
+                <p>
+                  <span className="font-mono">{envStatus.key}</span> is configured in
+                  this environment — saving now will validate the account ID against
+                  Meta before storing it.
+                </p>
+              ) : (
+                <p>
+                  To send and receive messages on this channel, add
+                  <span className="font-mono"> {envStatus.key} </span>
+                  to your Vercel environment variables and redeploy. You can still
+                  save the account ID now; the inbox will start working once the env
+                  var is in place.
+                </p>
+              )}
             </div>
           )}
 

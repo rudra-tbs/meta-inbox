@@ -731,3 +731,96 @@ DB cleanup: `migrations/2026_05_drop_brand_channel_tokens.sql` drops the now-unu
 
 No DB write, no app restart beyond the redeploy, no token ever touches Postgres.
 
+---
+
+## Env var naming convention (multi-brand)
+
+The token env-var name is computed at runtime in `src/lib/brand-channels.ts:14-16`:
+
+```ts
+const prefix = channel === 'IG' ? 'INSTAGRAM_TOKEN' : 'WHATSAPP_TOKEN';
+return `${prefix}_${String(brand).toUpperCase()}`;
+```
+
+So **only two** per-brand token env vars exist — one per channel. Phone number IDs and IG Business Account IDs are NOT env vars; they live in the `brand_channels.external_account_id` column, set from `/admin → Channels`.
+
+### Per-brand env vars
+
+For each brand you onboard, add (at minimum):
+
+| Env var | Purpose | Required? |
+|---|---|---|
+| `WHATSAPP_TOKEN_<BRAND>` | Long-lived Meta Cloud API system-user token; used for sending WA messages | If the brand has a WhatsApp channel |
+| `INSTAGRAM_TOKEN_<BRAND>` | Page access token covering the IG Business Account | If the brand has an Instagram channel |
+| `CRM_PIPELINE_<BRAND>_ID` | Numeric CRM pipeline id (optional — use this OR a `brand_pipelines` Supabase row) | Optional |
+| `CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID` | Numeric CRM stage id new deals start in (optional — same alternative as above) | Optional |
+
+`<BRAND>` is the brand string from `brand_channels.brand`, uppercased. So if the row has `brand='tbs'` or `brand='TBS'`, both resolve to `WHATSAPP_TOKEN_TBS`.
+
+### Global env vars (not per-brand)
+
+| Env var | Purpose |
+|---|---|
+| `WHATSAPP_APP_SECRET` | HMAC verification for inbound webhook (Meta App Dashboard → Settings → Basic) |
+| `WHATSAPP_VERIFY_TOKEN` | GET-handshake token for the WA webhook subscription |
+| `INSTAGRAM_VERIFY_TOKEN` | GET-handshake token for the IG webhook subscription (can be the same string as WA's) |
+| `CRM_DEFAULT_INITIAL_STAGE_ID` | Fallback initial stage when `brand_pipelines` + `CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID` are both unset |
+
+### Copy-paste env block: TBS + RD
+
+```
+# Per-brand tokens (required)
+WHATSAPP_TOKEN_TBS=
+INSTAGRAM_TOKEN_TBS=
+WHATSAPP_TOKEN_RD=
+INSTAGRAM_TOKEN_RD=
+
+# Per-brand CRM pipeline mapping (optional — DB row in brand_pipelines is preferred)
+# CRM_PIPELINE_TBS_ID=
+# CRM_PIPELINE_TBS_INITIAL_STAGE_ID=
+# CRM_PIPELINE_RD_ID=
+# CRM_PIPELINE_RD_INITIAL_STAGE_ID=
+```
+
+Adding a third brand (say `RV` for Revaah) just means adding `WHATSAPP_TOKEN_RV` and `INSTAGRAM_TOKEN_RV`. No code change.
+
+---
+
+## Channel-connection flow (current)
+
+The signup wizard at `/signup` has three steps — **Account → Brands → Review** (`src/app/signup/SignupClient.tsx:10`). There is no "Connect WhatsApp" step in signup any more; channel creation is admin-only. Agents inherit whichever channels an admin has already wired up for the brands they pick.
+
+### Connecting a new brand's WhatsApp / Instagram (admin-only)
+
+1. **Set the env var(s) in Vercel first.**
+   - Vercel project → Settings → Environment Variables → Add.
+   - Name: `WHATSAPP_TOKEN_<BRAND>` and/or `INSTAGRAM_TOKEN_<BRAND>` (brand uppercased, e.g. `WHATSAPP_TOKEN_RD`).
+   - Value: long-lived system-user token from Meta Business Manager.
+   - Apply to Production (and Preview if you want it on PR deploys).
+   - Redeploy — Vercel triggers automatically on env-var save.
+
+2. **Go to `/admin → Channels` → "+ Connect channel".**
+   - Pick the brand (sourced from CRM pipelines).
+   - Pick WhatsApp or Instagram.
+   - The modal live-checks `GET /api/brand-channels/env-check` and shows a green "env set" pill (or red "env missing" if step 1 isn't done — you can still save, but sending won't work yet).
+   - Enter the Meta account ID (WA phone number ID or IG Business Account ID).
+   - Submit. If the env token is present we validate the credential pair against Meta and store the verified display name; if not, we save the row anyway and surface a warning banner asking you to finish step 1.
+
+3. **Verify in the list.**
+   - Each row shows `Token: WHATSAPP_TOKEN_<BRAND>` with an "env set / env missing" pill so you can confirm at a glance.
+   - If the pill says "env missing", finish step 1 and redeploy; then refresh the page.
+
+4. **Rotate later** by editing the env var in Vercel and redeploying. The Channels tab "Edit" button only edits the account ID; the rotate-token instruction box points you back to Vercel.
+
+### Why this flow
+
+Tokens never touch Postgres, so a Supabase compromise can't leak Meta credentials. Rotation is a Vercel-only operation — no DB writes, no app restart, no token in the UI. The trade-off is one extra step (env var first, then UI) when onboarding a new brand. The in-modal env-check makes that step impossible to forget.
+
+### Endpoints involved
+
+- `GET /api/brand-channels` — list rows + per-row `token_env_key` + `token_env_set`.
+- `GET /api/brand-channels/env-check?brand=…&channel=…` — admin-only; returns `{ token_env_key, token_env_set }` for any brand+channel pair (used by the connect modal before save).
+- `POST /api/onboarding/channel` — admin creates the row; validates against Meta when the env token is set, returns `{ warning }` when it isn't.
+- `PATCH /api/brand-channels/[id]` — admin edits account ID; re-validates against Meta when the env token is set. Rejects `access_token` payloads with a 400 explaining the new flow.
+- `DELETE /api/brand-channels/[id]` — admin disconnects.
+
