@@ -129,27 +129,50 @@ export async function POST(
   // Resolve pipeline/stage BEFORE acquiring the lock so a misconfigured
   // brand fails fast without leaving a half-acquired flag.
   //
-  // Lookup order:
-  //   1. brand_pipelines table (admin-editable from /admin → Pipelines).
-  //   2. CRM_PIPELINE_<BRAND>_ID + CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID env
-  //      vars (BRAND uppercased) — per-deployment override.
-  //   3. If the brand string is numeric (canonical post brands_from_pipelines),
-  //      use it as pipeline_id and require CRM_DEFAULT_INITIAL_STAGE_ID.
+  // Lookup order — brand IS the CRM pipeline id in the canonical
+  // (post 2026_05_brand_is_pipeline_id) data model. The brand_pipelines
+  // mapping table is dropped; we only look at it as a transitional
+  // fallback for environments where the SQL migration hasn't run yet.
+  //
+  //   1. brand_settings.initial_stage_id     — per-brand initial stage.
+  //   2. brand_pipelines table               — LEGACY; ignored when the
+  //                                            table no longer exists.
+  //   3. CRM_PIPELINE_<BRAND>_(ID|INITIAL_STAGE_ID) env vars.
+  //   4. parseInt(brand) for pipeline_id;
+  //      CRM_DEFAULT_INITIAL_STAGE_ID for stage.
   const brandKey = String(conv.brand).toUpperCase();
 
   let pipeline_id: number | null = null;
   let stage_id: number | null = null;
 
-  const { data: mapping } = await supabase
-    .from('brand_pipelines')
-    .select('pipeline_id, initial_stage_id')
+  // 1. brand_settings (new canonical home for initial_stage_id).
+  const { data: settings } = await supabase
+    .from('brand_settings')
+    .select('initial_stage_id')
     .eq('brand', String(conv.brand))
     .maybeSingle();
-  if (mapping) {
-    pipeline_id = mapping.pipeline_id;
-    stage_id = mapping.initial_stage_id;
+  if (settings?.initial_stage_id) {
+    stage_id = settings.initial_stage_id as number;
   }
 
+  // 2. brand_pipelines — silent legacy fallback. If the table has been
+  //    dropped by the SQL migration, Supabase returns an error and `data`
+  //    stays null; we just fall through. Avoids a hard dependency on the
+  //    table's existence so this code is safe before, during, and after
+  //    the migration.
+  if (!pipeline_id || !stage_id) {
+    const { data: mapping } = await supabase
+      .from('brand_pipelines')
+      .select('pipeline_id, initial_stage_id')
+      .eq('brand', String(conv.brand))
+      .maybeSingle();
+    if (mapping) {
+      pipeline_id ??= mapping.pipeline_id as number;
+      stage_id ??= mapping.initial_stage_id as number;
+    }
+  }
+
+  // 3. Per-brand env vars (per-deployment override).
   if (!pipeline_id) {
     const envPipeline = process.env[`CRM_PIPELINE_${brandKey}_ID`];
     if (envPipeline) pipeline_id = parseInt(envPipeline);
@@ -159,6 +182,7 @@ export async function POST(
     if (envStage) stage_id = parseInt(envStage);
   }
 
+  // 4. Canonical: brand IS the pipeline id. Default stage from env.
   if (!pipeline_id && /^\d+$/.test(String(conv.brand))) {
     pipeline_id = parseInt(String(conv.brand));
   }
@@ -168,7 +192,7 @@ export async function POST(
 
   if (!pipeline_id || !stage_id) {
     return NextResponse.json(
-      { error: `CRM pipeline not configured for brand "${conv.brand}". An admin can map it under /admin → Pipelines.` },
+      { error: `CRM pipeline / initial stage not configured for brand "${conv.brand}". Set brand_settings.initial_stage_id (admin → Pipelines) or CRM_DEFAULT_INITIAL_STAGE_ID env var.` },
       { status: 400 }
     );
   }
