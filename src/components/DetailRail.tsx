@@ -25,6 +25,14 @@ function eventLabel(e: ConversationEvent): string {
     case 'ABSTAIN': return `AI abstained — escalated to human`;
     case 'CALLBACK_DETECTED': return `AI flagged a callback`;
     case 'CONTACT_MERGED': return `Contacts merged`;
+    case 'CRM_STAGE_CHANGED': {
+      const from = e.metadata?.from_stage_name ?? '—';
+      const to = e.metadata?.to_stage_name ?? '—';
+      const via = e.metadata?.source === 'crm-sync' ? 'CRM' : actor;
+      return `${via} moved stage: ${from} → ${to}`;
+    }
+    case 'CRM_DEAL_DELETED':
+      return `Deal #${e.metadata?.deal_id ?? '?'} deleted in CRM`;
     default: return `${actor} · ${e.event_type}`;
   }
 }
@@ -60,6 +68,9 @@ export default function DetailRail({ conversation, open, onClose, onConversation
   const [taxonomy, setTaxonomy] = useState<TaxonomyEntry[]>([]);
   const [events, setEvents] = useState<ConversationEvent[]>([]);
   const [refreshingStage, setRefreshingStage] = useState(false);
+  const [stages, setStages] = useState<Array<{ id: number; name: string }> | null>(null);
+  const [updatingStage, setUpdatingStage] = useState(false);
+  const [stageError, setStageError] = useState<string | null>(null);
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load tag taxonomy once when the rail opens. Cheap query (~tens of rows
@@ -83,6 +94,26 @@ export default function DetailRail({ conversation, open, onClose, onConversation
       .then(setEvents)
       .catch(() => {});
   }, [open, conversation.id]);
+
+  // Load the deal's pipeline stages once when the CRM section becomes
+  // visible, so the dropdown has the full list ready. Re-fetches when
+  // the conversation changes, or when push state changes (e.g. cron just
+  // marked a deal deleted → next open of a freshly-pushed conversation
+  // should fetch fresh stages).
+  useEffect(() => {
+    setStages(null);
+    setStageError(null);
+    if (!open || !conversation.pushed_to_crm) return;
+    let cancelled = false;
+    fetch(`/api/conversations/${conversation.id}/crm-stages`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.stages) setStages(data.stages);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [open, conversation.id, conversation.pushed_to_crm]);
 
   function saveNotes(value: string) {
     setNotesDraft(value);
@@ -141,6 +172,43 @@ export default function DetailRail({ conversation, open, onClose, onConversation
       }
     } finally {
       setRefreshingStage(false);
+    }
+  }
+
+  async function changeStage(stageId: number) {
+    if (updatingStage || stageId === conversation.crm_stage_id) return;
+    setStageError(null);
+    setUpdatingStage(true);
+    // Optimistic — flip the dropdown immediately so the RM sees their pick
+    // without waiting for the round-trip. Realtime will reconcile if the
+    // server response disagrees.
+    const prevId = conversation.crm_stage_id;
+    const prevName = conversation.crm_stage_name;
+    const newName = stages?.find((s) => s.id === stageId)?.name ?? null;
+    onConversationUpdate({ ...conversation, crm_stage_id: stageId, crm_stage_name: newName });
+    try {
+      const res = await fetch(`/api/conversations/${conversation.id}/crm-stage`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage_id: stageId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        // Roll back optimistic update.
+        onConversationUpdate({ ...conversation, crm_stage_id: prevId, crm_stage_name: prevName });
+        setStageError(data?.error ?? 'Could not update stage');
+        return;
+      }
+      onConversationUpdate({
+        ...conversation,
+        crm_stage_id: data.crm_stage_id,
+        crm_stage_name: data.crm_stage_name,
+      });
+    } catch {
+      onConversationUpdate({ ...conversation, crm_stage_id: prevId, crm_stage_name: prevName });
+      setStageError('Network error');
+    } finally {
+      setUpdatingStage(false);
     }
   }
 
@@ -269,15 +337,45 @@ export default function DetailRail({ conversation, open, onClose, onConversation
       {conversation.pushed_to_crm && (
         <Section title="CRM">
           <InfoRow label="Deal" value={`#${conversation.crm_deal_id}`} />
-          <InfoRow label="Stage" value={conversation.crm_stage_name} />
-          <div className="pt-1.5">
+          <div className="flex items-baseline justify-between gap-3 py-1">
+            <span className="text-xs text-text-secondary">Stage</span>
+            {stages && stages.length > 0 ? (
+              <select
+                value={conversation.crm_stage_id ?? ''}
+                onChange={(e) => changeStage(parseInt(e.target.value, 10))}
+                disabled={updatingStage}
+                className="text-xs bg-canvas border border-border-default rounded px-1.5 py-1 max-w-[60%] text-text-default focus:outline-none focus:border-border-strong disabled:opacity-50"
+              >
+                {/* If the current stage isn't in the dropdown (e.g. the CRM
+                    deactivated it), surface it as a disabled option so the
+                    RM still sees what they're on. */}
+                {!stages.some((s) => s.id === conversation.crm_stage_id) && conversation.crm_stage_id != null && (
+                  <option value={conversation.crm_stage_id} disabled>
+                    {conversation.crm_stage_name ?? `#${conversation.crm_stage_id}`} (unavailable)
+                  </option>
+                )}
+                {stages.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            ) : (
+              <span className={`text-xs ${conversation.crm_stage_name ? 'text-text-default font-medium' : 'text-text-disabled'}`}>
+                {conversation.crm_stage_name ?? '—'}
+              </span>
+            )}
+          </div>
+          {stageError && (
+            <p className="text-[11px] text-danger mt-1">{stageError}</p>
+          )}
+          <div className="pt-1.5 flex items-center gap-2 flex-wrap">
             <button
               onClick={refreshStage}
               disabled={refreshingStage}
               className="text-[11px] text-text-secondary hover:text-text-default disabled:opacity-50"
             >
-              {refreshingStage ? 'Refreshing…' : 'Refresh stage from CRM'}
+              {refreshingStage ? 'Refreshing…' : 'Refresh from CRM'}
             </button>
+            <span className="text-[10px] text-text-muted">Auto-syncs every 5 min</span>
           </div>
         </Section>
       )}

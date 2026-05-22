@@ -884,3 +884,62 @@ Tokens never touch Postgres, so a Supabase compromise can't leak Meta credential
 - `PATCH /api/brand-channels/[id]` — admin edits account ID; re-validates against Meta when the env token is set. Rejects `access_token` payloads with a 400 explaining the new flow.
 - `DELETE /api/brand-channels/[id]` — admin disconnects.
 
+---
+
+## Two-way CRM sync
+
+Push from app → CRM was always one-shot. As of Phase 1.7 the loop is closed in both directions.
+
+### CRM → App (cron-driven, every 5 min)
+
+`vercel.json` schedules a hit to `GET /api/cron/sync-crm` on `*/5 * * * *`. The route:
+
+1. Authenticates via `Authorization: Bearer ${CRON_SECRET}` header — anything else → 401.
+2. Selects every `conversations` row with `pushed_to_crm = true` and a non-null `crm_deal_id`.
+3. Runs one batched `SELECT d.id, d.stage_id, d.is_deleted, s.name AS stage_name FROM deals d LEFT JOIN stages s ON s.id = d.stage_id WHERE d.id IN (...)` against the CRM.
+4. For each conversation:
+   - **Deal row missing** (hard-deleted in CRM) → clear `pushed_to_crm`, `crm_deal_id`, `crm_stage_id`, `crm_stage_name`, `pushed_to_crm_at`, `pushed_by_user_id`. Log `CRM_DEAL_DELETED` with `mode: 'hard_delete'`.
+   - **`is_deleted = 1`** (soft-deleted in CRM) → same Supabase clear. Log `CRM_DEAL_DELETED` with `mode: 'soft_delete'`.
+   - **`stage_id` drifted** → patch `crm_stage_id` + `crm_stage_name`. Log `CRM_STAGE_CHANGED` with `source: 'crm-sync'`.
+   - **Unchanged** → no write (cron stays idempotent under steady-state).
+5. Returns `{ total, synced, deleted }`. Failures are reported to Sentry with `tags.component = 'cron-sync-crm'`.
+
+Setting `CRON_SECRET`:
+- Generate: `openssl rand -hex 32`.
+- Add to Vercel → Settings → Environment Variables for Production (and Preview if you want previews to run the cron — usually no).
+- Vercel automatically wires up the schedule from `vercel.json` and injects the Bearer header.
+
+A deleted deal in CRM appears back in the inbox as "ready to Push to CRM" within ~5 minutes; the activity log on that conversation preserves the deal id for forensics.
+
+### App → CRM (stage updates from DetailRail)
+
+`PATCH /api/conversations/[id]/crm-stage` body `{ stage_id: number }`:
+
+1. User auth (any logged-in user with access to the conversation).
+2. Verify the conversation is `pushed_to_crm` and has a `crm_deal_id`.
+3. Verify the target stage exists in CRM AND belongs to the deal's current pipeline (look up `deals.pipeline_id`, then `stages.pipeline_id`; reject mismatches with 400).
+4. `UPDATE deals SET stage_id = ?, updated_at = NOW() WHERE id = ?` in CRM.
+5. Mirror to Supabase (`crm_stage_id`, `crm_stage_name`, `updated_at`).
+6. Log `CRM_STAGE_CHANGED` with `source: 'app'`.
+7. If the CRM update succeeds but the Supabase mirror fails, return 502 with the new values — the cron will reconcile within 5 minutes anyway, so the app catches up automatically.
+
+Companion `GET /api/conversations/[id]/crm-stages` returns the full stage list for the deal's current pipeline (resolved from the live CRM deal row, not from `brand_pipelines` — so pipeline reassignments in CRM are followed correctly). The DetailRail loads this once when the CRM section becomes visible and renders the stages as a `<select>` with the current stage selected. Optimistic update on change.
+
+The dropdown also handles the edge case where a stage has been deactivated in CRM (no longer in the active stage list) but the deal is still parked there: that stage shows as a disabled option labelled `<name> (unavailable)` so the operator can see what they're on without being able to re-select it.
+
+> **Known gap.** The `deals.pipeline_history` JSON column is **not** maintained by these direct UPDATEs — that column is normally written by the CRM's own Java app on stage transitions, and we're bypassing it. Analytics that aggregate over `pipeline_history` will miss app-driven transitions. If that becomes a problem, the right fix is either (a) replicating the CRM's pipeline_history JSON mutation rule here, or (b) hitting a CRM REST endpoint instead of writing raw SQL.
+
+### Activity events added in this phase
+
+- `CRM_STAGE_CHANGED` — metadata: `{ deal_id, from_stage_id, from_stage_name, to_stage_id, to_stage_name, source: 'app' | 'crm-sync' }`
+- `CRM_DEAL_DELETED` — metadata: `{ deal_id, mode: 'soft_delete' | 'hard_delete' }`
+
+Both render readably in the DetailRail activity timeline.
+
+### Endpoints
+
+- `GET /api/cron/sync-crm` — Bearer-authed; runs the bidirectional reconciliation.
+- `GET /api/conversations/[id]/crm-stages` — user-authed; returns `{ pipeline_id, stages: [{id, name, stage_order}] }`.
+- `PATCH /api/conversations/[id]/crm-stage` — user-authed; body `{ stage_id }`; updates CRM + Supabase + logs event.
+- `POST /api/conversations/refresh-stages?conversation_id=…` (existing) — user-triggered single-deal force refresh; still wired to the "Refresh from CRM" button in DetailRail for impatient operators.
+
