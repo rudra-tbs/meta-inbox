@@ -1,11 +1,39 @@
 'use client';
 
+import { useEffect, useMemo, useRef } from 'react';
 import type { Conversation } from '@/types';
 import type { StatusFilter } from '@/app/inbox/InboxClient';
 import ConversationItem from './ConversationItem';
 import FilterPills from './FilterPills';
 import StatsBar from './StatsBar';
 import BulkActionBar from './BulkActionBar';
+
+type Bucket = 'today' | 'yesterday' | 'this-week' | 'older';
+const BUCKETS: Bucket[] = ['today', 'yesterday', 'this-week', 'older'];
+const BUCKET_LABEL: Record<Bucket, string> = {
+  today: 'Today',
+  yesterday: 'Yesterday',
+  'this-week': 'This week',
+  older: 'Older',
+};
+
+// Group a conversation by its last_message_at into one of four buckets.
+// Boundaries: today = since local midnight, yesterday = previous local day,
+// this-week = previous 6 days excluding yesterday, older = anything earlier.
+function bucketFor(iso: string): Bucket {
+  const d = new Date(iso);
+  const now = new Date();
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  if (d >= today) return 'today';
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (d >= yesterday) return 'yesterday';
+  const weekAgo = new Date(today);
+  weekAgo.setDate(today.getDate() - 7);
+  if (d >= weekAgo) return 'this-week';
+  return 'older';
+}
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -45,6 +73,55 @@ export default function ConversationList({
 }: ConversationListProps) {
   const selectionActive = checkedIds.size > 0;
   const checkedConversations = conversations.filter((c) => checkedIds.has(c.id));
+
+  // Recency grouping. Buckets are computed once per conversations[] change;
+  // ordering inside each bucket preserves the upstream sort (last_message_at desc).
+  const grouped = useMemo(() => {
+    const map = new Map<Bucket, Conversation[]>();
+    for (const conv of conversations) {
+      const b = bucketFor(conv.last_message_at);
+      const list = map.get(b);
+      if (list) list.push(conv); else map.set(b, [conv]);
+    }
+    return BUCKETS.filter((b) => map.has(b)).map((b) => ({
+      key: b,
+      label: BUCKET_LABEL[b],
+      items: map.get(b)!,
+    }));
+  }, [conversations]);
+
+  // Mobile scroll preservation. On display: none ↔ flex toggles in some
+  // browsers (iOS Safari) the scroll container loses its scrollTop.
+  // Cache the last known position in a ref and restore whenever the
+  // container becomes visible again via IntersectionObserver — no API
+  // change needed in the parent.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const lastScrollRef = useRef(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      lastScrollRef.current = el.scrollTop;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    let lastVisible = false;
+    const observer = new IntersectionObserver((entries) => {
+      const isVisible = entries[0]?.isIntersecting ?? false;
+      // Restore only on the transition from hidden → visible. Avoids
+      // overwriting scroll position when the user is actively scrolling.
+      if (isVisible && !lastVisible && lastScrollRef.current > 0) {
+        el.scrollTop = lastScrollRef.current;
+      }
+      lastVisible = isVisible;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   return (
     <div data-tour="conversation-list" className="flex flex-col flex-1 overflow-hidden">
       {/* Search */}
@@ -77,7 +154,7 @@ export default function ConversationList({
       <FilterPills value={statusFilter} onChange={setStatusFilter} />
 
       {/* Conversation list */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="px-4 py-6 space-y-2">
             {[0, 1, 2].map((i) => (
@@ -98,16 +175,24 @@ export default function ConversationList({
             activeChannelLabel={activeChannelLabel ?? null}
           />
         ) : (
-          conversations.map((conv) => (
-            <ConversationItem
-              key={conv.id}
-              conversation={conv}
-              selected={conv.id === selectedId}
-              onClick={() => onSelect(conv.id)}
-              selectionActive={selectionActive}
-              checked={checkedIds.has(conv.id)}
-              onToggleCheck={() => onToggleCheck(conv.id)}
-            />
+          grouped.map((group) => (
+            <section key={group.key}>
+              <h3 className="sticky top-0 z-[1] bg-elevated/90 backdrop-blur px-3 py-1.5 text-[10px] uppercase tracking-[0.08em] font-semibold text-text-muted border-b border-border-subtle">
+                {group.label}
+                <span className="ml-1.5 font-normal text-text-disabled">({group.items.length})</span>
+              </h3>
+              {group.items.map((conv) => (
+                <ConversationItem
+                  key={conv.id}
+                  conversation={conv}
+                  selected={conv.id === selectedId}
+                  onClick={() => onSelect(conv.id)}
+                  selectionActive={selectionActive}
+                  checked={checkedIds.has(conv.id)}
+                  onToggleCheck={() => onToggleCheck(conv.id)}
+                />
+              ))}
+            </section>
           ))
         )}
       </div>

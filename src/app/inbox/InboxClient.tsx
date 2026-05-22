@@ -9,6 +9,8 @@ import ConversationList from '@/components/ConversationList';
 import ChatWindow from '@/components/ChatWindow';
 import CommandPalette, { type PaletteAction } from '@/components/CommandPalette';
 import WelcomeTour from '@/components/WelcomeTour';
+import SavedFiltersBar, { type SavedFilter } from '@/components/SavedFiltersBar';
+import { toast } from '@/lib/toast';
 
 export type StatusFilter = 'all' | 'AI' | 'HUMAN' | 'QUALIFIED' | 'MINE' | 'PENDING' | 'SNOOZED';
 
@@ -159,7 +161,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
     }
   }, []);
 
-  async function refreshStagesFromCRM() {
+  const refreshStagesFromCRM = useCallback(async () => {
     setRefreshingStages(true);
     try {
       await fetch('/api/conversations/refresh-stages', { method: 'POST' });
@@ -168,7 +170,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
     } finally {
       setRefreshingStages(false);
     }
-  }
+  }, [fetchStages, fetchConversations]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
@@ -458,56 +460,151 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
 
   const tagsInUse = Array.from(new Set(conversations.flatMap((c) => c.tags ?? []))).sort();
 
-  // Command palette actions
-  const paletteActions: PaletteAction[] = [
-    {
-      id: 'toggle-mode',
-      label: 'Toggle AI / Human on selected',
-      hint: 'T',
-      run: ({ selectedConversation }) => {
-        if (!selectedConversation) return;
-        const newMode = selectedConversation.mode === 'AI' ? 'HUMAN' : 'AI';
-        fetch(`/api/conversations/${selectedConversation.id}/mode`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: newMode }),
-        }).then(() => fetchConversations());
+  // Command palette actions. The list is dynamic: it changes as the
+  // selected conversation, brand, and stage list change. The palette
+  // itself only renders actions whose score >= 0 (fuzzy match passes).
+  const paletteActions: PaletteAction[] = useMemo(() => {
+    const list: PaletteAction[] = [
+      {
+        id: 'toggle-mode',
+        label: 'Toggle AI / Human on selected',
+        hint: 'T',
+        run: ({ selectedConversation }) => {
+          if (!selectedConversation) return;
+          const newMode = selectedConversation.mode === 'AI' ? 'HUMAN' : 'AI';
+          fetch(`/api/conversations/${selectedConversation.id}/mode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: newMode }),
+          })
+            .then(() => fetchConversations())
+            .then(() => toast.success(`Mode → ${newMode}`));
+        },
       },
-    },
-    {
-      id: 'snooze-1h',
-      label: 'Snooze selected for 1 hour',
-      run: ({ selectedConversation }) => {
-        if (!selectedConversation) return;
-        const until = new Date(Date.now() + 3600 * 1000).toISOString();
-        fetch(`/api/conversations/${selectedConversation.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ snoozed_until: until }),
-        }).then(() => fetchConversations());
+      // Snooze presets. Adding 1h alongside the existing button so a
+      // power-user can pick any duration without touching the mouse.
+      ...[
+        { hours: 1, label: '1 hour' },
+        { hours: 3, label: '3 hours' },
+        { hours: 24, label: '1 day' },
+        { hours: 168, label: '1 week' },
+      ].map((preset) => ({
+        id: `snooze-${preset.hours}h`,
+        label: `Snooze selected · ${preset.label}`,
+        run: ({ selectedConversation }: { selectedConversation: Conversation | null }) => {
+          if (!selectedConversation) return;
+          const until = new Date(Date.now() + preset.hours * 3600 * 1000).toISOString();
+          fetch(`/api/conversations/${selectedConversation.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ snoozed_until: until }),
+          })
+            .then(() => fetchConversations())
+            .then(() => toast.success(`Snoozed ${preset.label}`));
+        },
+      })),
+      {
+        id: 'assign-to-me',
+        label: 'Assign selected to me',
+        run: ({ selectedConversation }) => {
+          if (!selectedConversation) return;
+          fetch(`/api/conversations/${selectedConversation.id}/assign`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: currentUser.id }),
+          })
+            .then(() => fetchConversations())
+            .then(() => toast.success(`Assigned to ${currentUser.name}`));
+        },
       },
-    },
-    {
-      id: 'refresh-stages',
-      label: 'Refresh CRM stages',
-      run: () => refreshStagesFromCRM(),
-    },
-    {
-      id: 'go-pending',
-      label: 'Filter: Pending',
-      run: () => setStatusFilter('PENDING'),
-    },
-    {
-      id: 'go-mine',
-      label: 'Filter: Mine',
-      run: () => setStatusFilter('MINE'),
-    },
-    {
-      id: 'go-all',
-      label: 'Filter: All conversations',
-      run: () => { setStatusFilter('all'); setTagFilter(null); setStageFilter(null); },
-    },
-  ];
+      {
+        id: 'unassign',
+        label: 'Unassign selected',
+        run: ({ selectedConversation }) => {
+          if (!selectedConversation) return;
+          fetch(`/api/conversations/${selectedConversation.id}/assign`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: null }),
+          })
+            .then(() => fetchConversations())
+            .then(() => toast.success('Unassigned'));
+        },
+      },
+      {
+        id: 'refresh-stages',
+        label: 'Refresh CRM stages',
+        run: () => refreshStagesFromCRM(),
+      },
+      // Stage-change shortcuts. Built from the current pipeline's
+      // stages — only appears when a conversation is pushed to CRM.
+      // We don't know the selected conversation here (it's passed via
+      // the run callback), so we render every stage as its own action
+      // and bail out at run time if there's no pushed conversation.
+      ...stages.map((stage) => ({
+        id: `move-stage-${stage.id}`,
+        label: `Move stage → ${stage.name}`,
+        hint: `#${stage.id}`,
+        run: ({ selectedConversation }: { selectedConversation: Conversation | null }) => {
+          if (!selectedConversation) return;
+          if (!selectedConversation.pushed_to_crm || !selectedConversation.crm_deal_id) {
+            toast.error('Conversation not pushed to CRM', {
+              description: 'Push to CRM first from the conversation header.',
+            });
+            return;
+          }
+          fetch(`/api/conversations/${selectedConversation.id}/crm-stage`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stage_id: stage.id }),
+          })
+            .then(async (res) => {
+              const data = await res.json().catch(() => ({}));
+              if (res.ok) {
+                toast.success(`Stage → ${stage.name}`);
+                fetchConversations();
+              } else if (data?.missing) {
+                // The matrix tripped. Tell the operator what's missing
+                // and where to fix it.
+                toast.error(data?.error ?? 'Cannot move stage', {
+                  description: 'Open the conversation and click the stage dropdown to fill the required fields.',
+                });
+              } else {
+                toast.error(data?.error ?? 'Stage change failed');
+              }
+            });
+        },
+      })),
+      // Brand switching — one entry per accessible brand.
+      ...brands
+        .filter((b) => b.id !== activeBrand)
+        .map((brand) => ({
+          id: `switch-brand-${brand.id}`,
+          label: `Switch brand → ${brand.name}`,
+          run: () => {
+            setActiveBrand(brand.id);
+            try { window.localStorage.setItem(ACTIVE_BRAND_STORAGE_KEY, brand.id); } catch {}
+            setSelectedId(null);
+          },
+        })),
+      {
+        id: 'go-pending',
+        label: 'Filter: Pending',
+        run: () => setStatusFilter('PENDING'),
+      },
+      {
+        id: 'go-mine',
+        label: 'Filter: Mine',
+        run: () => setStatusFilter('MINE'),
+      },
+      {
+        id: 'go-all',
+        label: 'Filter: All conversations',
+        run: () => { setStatusFilter('all'); setTagFilter(null); setStageFilter(null); },
+      },
+    ];
+    return list;
+  }, [stages, brands, activeBrand, currentUser.id, currentUser.name, fetchConversations, refreshStagesFromCRM]);
 
   const hasSecondaryFilters = tagsInUse.length > 0 || stages.length > 0 || isAdmin;
 
@@ -537,6 +634,17 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
             }}
           />
         </div>
+
+        <SavedFiltersBar
+          currentStatus={statusFilter}
+          currentTag={tagFilter}
+          currentStage={stageFilter}
+          onApply={(f: SavedFilter) => {
+            setStatusFilter((f.status ?? 'all') as StatusFilter);
+            setTagFilter(f.tag ?? null);
+            setStageFilter(f.stage ?? null);
+          }}
+        />
 
         {hasSecondaryFilters && (
           <div className="flex flex-col gap-1 px-3 py-2 border-b border-border-subtle">
