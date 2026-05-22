@@ -47,6 +47,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -142,14 +143,19 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   // When ALL channels view is active and a contact is selected, fetch interleaved
   // messages from all their conversations. Otherwise fetch only the selected conversation's messages.
   const fetchMessages = useCallback(async (conversationId: string) => {
-    const inAllView = activeChannelRef.current === 'ALL';
-    const conv = conversationsRef.current.find((c) => c.id === conversationId);
-    if (inAllView && conv?.contact_id) {
-      const res = await fetch(`/api/contacts/${conv.contact_id}/messages`);
-      if (res.ok) setMessages(await res.json());
-    } else {
-      const res = await fetch(`/api/conversations/${conversationId}/messages`);
-      if (res.ok) setMessages(await res.json());
+    setMessagesLoading(true);
+    try {
+      const inAllView = activeChannelRef.current === 'ALL';
+      const conv = conversationsRef.current.find((c) => c.id === conversationId);
+      if (inAllView && conv?.contact_id) {
+        const res = await fetch(`/api/contacts/${conv.contact_id}/messages`);
+        if (res.ok) setMessages(await res.json());
+      } else {
+        const res = await fetch(`/api/conversations/${conversationId}/messages`);
+        if (res.ok) setMessages(await res.json());
+      }
+    } finally {
+      setMessagesLoading(false);
     }
   }, []);
 
@@ -610,6 +616,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
             conversation={selectedConversation}
             currentUser={currentUser}
             messages={messages}
+            messagesLoading={messagesLoading}
             onModeChange={handleConversationUpdate}
             onAssign={handleConversationUpdate}
             onConversationUpdate={handleConversationUpdate}

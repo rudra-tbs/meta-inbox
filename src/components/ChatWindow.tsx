@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, Fragment } from 'react';
+import { useEffect, useMemo, useRef, useState, Fragment } from 'react';
 import type { Conversation, Message, AppUser, ReplyTemplate } from '@/types';
 import { SNOOZE_PRESETS } from '@/types';
 import MessageBubble from './MessageBubble';
@@ -11,11 +11,15 @@ import DetailRail from './DetailRail';
 import LeadInfoBar from './LeadInfoBar';
 import Button from './ui/Button';
 import Dot from './ui/Dot';
+import AiTypingIndicator from './AiTypingIndicator';
+import MessagesSkeleton from './MessagesSkeleton';
+import { toast } from '@/lib/toast';
 
 interface ChatWindowProps {
   conversation: Conversation;
   currentUser: AppUser;
   messages: Message[];
+  messagesLoading?: boolean;
   onModeChange: (updated: Conversation) => void;
   onAssign: (updated: Conversation) => void;
   onConversationUpdate: (updated: Conversation) => void;
@@ -58,6 +62,7 @@ export default function ChatWindow({
   conversation,
   currentUser,
   messages,
+  messagesLoading,
   onModeChange,
   onAssign,
   onConversationUpdate,
@@ -111,6 +116,26 @@ export default function ChatWindow({
   const suggestion = conversation.suggested_reply;
   const isSnoozed = !!conversation.snoozed_until && new Date(conversation.snoozed_until) > new Date();
 
+  // "AI · drafting" heuristic. We don't have a server-side signal for
+  // "AI is currently generating a reply" — so we infer it from message
+  // timing. Indicator is on for up to 30s after a lead message arrives,
+  // hiding when an outbound message appears via realtime OR the window
+  // expires (whichever comes first). 2s ticker keeps the auto-expiry
+  // accurate; cheap.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 2000);
+    return () => clearInterval(id);
+  }, []);
+  const aiThinking = useMemo(() => {
+    if (conversation.mode !== 'AI') return false;
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg) return false;
+    if (lastMsg.direction !== 'INBOUND' || lastMsg.sender !== 'LEAD') return false;
+    const elapsedMs = nowTick - new Date(lastMsg.created_at).getTime();
+    return elapsedMs >= 0 && elapsedMs < 30_000;
+  }, [messages, conversation.mode, nowTick]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -151,7 +176,14 @@ export default function ChatWindow({
             last_human_message_at: new Date().toISOString(),
           });
         }
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error('Reply not sent', {
+          description: data?.details ?? data?.error ?? 'Try again or check System tab for the delivery error.',
+        });
       }
+    } catch {
+      toast.error('Reply not sent', { description: 'Network error.' });
     } finally {
       setSending(false);
     }
@@ -337,25 +369,30 @@ export default function ChatWindow({
       <div className="flex flex-1 overflow-hidden">
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-5 py-5 bg-warm">
-          {messages.length === 0 ? (
+          {messagesLoading && messages.length === 0 ? (
+            <MessagesSkeleton />
+          ) : messages.length === 0 ? (
             <div className="flex items-center justify-center h-full text-xs text-text-muted">No messages yet</div>
           ) : (
-            messages.map((msg, i) => {
-              const prev = messages[i - 1];
-              const showDateSeparator =
-                !prev || new Date(msg.created_at).toDateString() !== new Date(prev.created_at).toDateString();
-              return (
-                <Fragment key={msg.id}>
-                  {showDateSeparator && <DateSeparator date={msg.created_at} />}
-                  <MessageBubble
-                    message={msg}
-                    contactName={conversation.contact_name}
-                    showChannel={showChannelTags}
-                    onRetry={onMessageSent}
-                  />
-                </Fragment>
-              );
-            })
+            <>
+              {messages.map((msg, i) => {
+                const prev = messages[i - 1];
+                const showDateSeparator =
+                  !prev || new Date(msg.created_at).toDateString() !== new Date(prev.created_at).toDateString();
+                return (
+                  <Fragment key={msg.id}>
+                    {showDateSeparator && <DateSeparator date={msg.created_at} />}
+                    <MessageBubble
+                      message={msg}
+                      contactName={conversation.contact_name}
+                      showChannel={showChannelTags}
+                      onRetry={onMessageSent}
+                    />
+                  </Fragment>
+                );
+              })}
+              {aiThinking && <AiTypingIndicator />}
+            </>
           )}
           <div ref={bottomRef} />
         </div>
@@ -408,21 +445,33 @@ export default function ChatWindow({
             </div>
           )}
           {isHumanMode && suggestion && !reply && (
-            <button
-              type="button"
+            <div
+              className="bg-warning-soft border border-warning/20 rounded-md px-3 py-2 hover:border-warning/40 transition-colors cursor-pointer"
               onClick={() => setReply(suggestion)}
-              className="text-left bg-warning-soft border border-warning/20 rounded-md px-3 py-2 hover:border-warning/40 transition-colors"
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setReply(suggestion);
+                }
+              }}
             >
               <div className="flex items-center justify-between gap-2 mb-1">
                 <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-warning">
                   <Dot tone="warning" /> Suggested reply
                 </span>
-                <span className="text-[10px] text-text-muted whitespace-nowrap hidden md:inline">
-                  <kbd>Tab</kbd> to use
-                </span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setReply(suggestion); textareaRef.current?.focus(); }}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-warning hover:text-warning/80 whitespace-nowrap"
+                >
+                  Use it
+                  <kbd className="hidden md:inline text-[10px] bg-elevated/60 border border-warning/30 rounded px-1 py-px font-mono">Tab</kbd>
+                </button>
               </div>
               <p className="text-xs text-text-default line-clamp-3 whitespace-pre-wrap">{suggestion}</p>
-            </button>
+            </div>
           )}
           <div className="flex gap-2 items-end">
             <textarea
