@@ -551,7 +551,7 @@ The system now extends well beyond the original spec. This section reflects what
 
 ### Schema diff vs Phase 1
 
-New tables: `contacts`, `conversation_events`, `admin_events`, `reply_templates`, `brand_channels`, `brand_contexts`, `brand_pipelines`, `brand_settings`, `tag_taxonomy`.
+New tables: `contacts`, `conversation_events`, `admin_events`, `reply_templates`, `brand_channels`, `brand_contexts`, `brand_settings`, `tag_taxonomy`. (`brand_pipelines` existed briefly and was dropped in `2026_05_brand_is_pipeline_id.sql` — its only remaining field, `initial_stage_id`, moved into `brand_settings`.)
 
 New columns on `conversations`: `contact_id`, `ai_abstained`, `callback_required`, `needs_human_reply`, `manually_set_human`, `instagram_id`, `pushed_to_crm`, `crm_deal_id`, `crm_stage_id`, `crm_stage_name`, `pushed_to_crm_at`, `pushed_by_user_id`, `suggested_reply`, `suggested_reply_at`, `snoozed_until`, `unread_count`, `last_message_preview`, `lead_score`, `tags[]`.
 
@@ -596,7 +596,7 @@ OpenRouter (spec) has been replaced with **Groq** (`src/lib/llm.ts`). Default mo
 ### CRM (MySQL) push
 
 - Endpoint: `POST /api/conversations/[id]/push-to-crm`.
-- Pipeline/stage resolution order: `brand_pipelines` row → `CRM_PIPELINE_<BRAND>_ID` env → numeric-brand fallback + `CRM_DEFAULT_INITIAL_STAGE_ID`.
+- Pipeline/stage resolution order: `parseInt(brand)` for pipeline id (since brand IS the pipeline id); `brand_settings.initial_stage_id` → `CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID` → `CRM_DEFAULT_INITIAL_STAGE_ID` for the initial stage.
 - Three MySQL writes: `INSERT persons … ON DUPLICATE KEY UPDATE`, SELECT person_id, `INSERT deals`.
 - Each step wrapped with rollback of the Supabase lock on failure (see Phase 1.5 below).
 - Single-conversation stage refresh: `POST /api/conversations/refresh-stages?conversation_id=<uuid>` (no param = bulk refresh).
@@ -741,10 +741,12 @@ There are **two distinct identifiers** for every brand. Keep them straight when 
 
 | Concept | Source of truth | Format | Used by |
 |---|---|---|---|
-| Brand id | `brand_channels.brand`, `conversations.brand`, `user_access.brand`, etc. | Free-text. In production this is the CRM `pipelines.id` as a string (e.g. `'67'`, `'58'`). Legacy rows may still hold `'TBS'` / `'RD'`. | Webhook routing, conversation FKs, CRM push pipeline resolver, RLS policies. |
+| Brand id | `brand_channels.brand`, `conversations.brand`, `user_access.brand`, `brand_settings.brand`, `brand_contexts.brand` | The CRM `pipelines.id` as text (e.g. `'47'`, `'67'`). One namespace — no separate mapping table. | Webhook routing, conversation FKs, CRM push pipeline resolver (= brand id), RLS policies. |
 | Token env suffix | `brand_settings.token_env_suffix` (computed once at onboarding) | Uppercased letters + digits, derived from the brand's display name via `brandToEnvKey()`. e.g. `TBS`, `RSP`, `AURAMIST`. | Building `WHATSAPP_TOKEN_<SUFFIX>` / `INSTAGRAM_TOKEN_<SUFFIX>` env-var names. |
 
-The brand id is whatever the CRM gives us; the env suffix is a deterministic, human-readable label derived from the brand's display name. They're decoupled on purpose: the CRM owns the brand id, your Vercel env owns the tokens, and `brand_settings.token_env_suffix` bridges the two.
+**The brand IS the CRM pipeline** — `parseInt(brand)` is the pipeline id directly. The env suffix is a separate deterministic, human-readable label derived from the brand's display name, so `WHATSAPP_TOKEN_<SUFFIX>` reads as `WHATSAPP_TOKEN_TBS` instead of `WHATSAPP_TOKEN_67`.
+
+The old `brand_pipelines` table that used to map brand strings → pipeline ids was dropped by `migrations/2026_05_brand_is_pipeline_id.sql`. Initial-stage configuration that used to live there now lives in `brand_settings.initial_stage_id`.
 
 There is **no CHECK constraint** on any `brand` column. The original `'TBS' | 'RD'` enum was dropped in `migrations/brands_from_pipelines.sql`; `migrations/2026_05_brand_env_suffix.sql` defensively re-drops any remaining brand constraints across every brand-bearing table.
 
@@ -801,7 +803,7 @@ If `brand_settings.token_env_suffix` already exists and isn't equal to the legac
 |---|---|---|
 | `WHATSAPP_TOKEN_<SUFFIX>` | Long-lived Meta Cloud API system-user token | If the brand has a WhatsApp channel |
 | `INSTAGRAM_TOKEN_<SUFFIX>` | Page access token covering the IG Business Account | If the brand has an Instagram channel |
-| `CRM_PIPELINE_<BRAND>_ID` | Numeric CRM pipeline id (alternative to a `brand_pipelines` Supabase row) | Optional |
+| `CRM_PIPELINE_<BRAND>_ID` | Numeric CRM pipeline id override (rarely needed — brand id IS the pipeline id by default) | Optional |
 | `CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID` | Numeric CRM stage id new deals start in | Optional |
 
 Note that `<SUFFIX>` (token env vars) and `<BRAND>` (CRM pipeline env vars) come from different sources — the suffix is `brand_settings.token_env_suffix`, while `<BRAND>` in the CRM-pipeline env vars is `String(brand).toUpperCase()` (the brand id, not the display-name-derived suffix). In practice for most deployments they'll be the same string, but they don't have to be.
@@ -813,7 +815,7 @@ Note that `<SUFFIX>` (token env vars) and `<BRAND>` (CRM pipeline env vars) come
 | `WHATSAPP_APP_SECRET` | HMAC verification for inbound webhook |
 | `WHATSAPP_VERIFY_TOKEN` | GET-handshake token for the WA webhook subscription |
 | `INSTAGRAM_VERIFY_TOKEN` | GET-handshake token for the IG webhook subscription (can be the same string as WA's) |
-| `CRM_DEFAULT_INITIAL_STAGE_ID` | Fallback initial stage when neither `brand_pipelines` row nor `CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID` is set |
+| `CRM_DEFAULT_INITIAL_STAGE_ID` | Fallback initial stage when neither `brand_settings.initial_stage_id` nor `CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID` is set |
 
 ### Copy-paste env block — example brands
 

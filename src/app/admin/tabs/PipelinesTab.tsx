@@ -121,10 +121,11 @@ export default function PipelinesTab() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-sm font-semibold text-text-primary">Brand → pipeline mapping</h3>
+        <h3 className="text-sm font-semibold text-text-primary">Brand → initial stage</h3>
         <p className="text-[12px] text-text-secondary mt-0.5 max-w-xl">
-          When a planner clicks <strong>Push to CRM</strong>, we create the deal in the pipeline + stage you assign here.
-          Stored in Supabase so changes are instant — no redeploy. Env vars (<code className="font-mono text-[11px] bg-muted px-1 rounded">CRM_PIPELINE_*</code>) are still honoured as a fallback.
+          The brand id IS the CRM pipeline id — the only thing to configure here is which stage new deals land in when an RM clicks <strong>Push to CRM</strong>.
+          Stored in <code className="font-mono text-[11px] bg-muted px-1 rounded">brand_settings.initial_stage_id</code>; env vars
+          (<code className="font-mono text-[11px] bg-muted px-1 rounded">CRM_PIPELINE_*</code>, <code className="font-mono text-[11px] bg-muted px-1 rounded">CRM_DEFAULT_INITIAL_STAGE_ID</code>) are still honoured as fallbacks.
         </p>
       </div>
 
@@ -231,7 +232,10 @@ function MappingRow({
   logoUrl: string | null;
   onSaved: () => void;
 }) {
-  const [pipelineId, setPipelineId] = useState<string>(mapping?.pipeline_id ? String(mapping.pipeline_id) : '');
+  // Pipeline id is no longer admin-editable — it's the brand id itself.
+  // We derive it from the brand string for the stages-dropdown lookup
+  // and the save payload.
+  const pipelineId = /^\d+$/.test(brand) ? brand : '';
   const [stageId, setStageId] = useState<string>(mapping?.initial_stage_id ? String(mapping.initial_stage_id) : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -301,12 +305,9 @@ function MappingRow({
   const selectedPipeline = pipelines.find((p) => String(p.id) === pipelineId) ?? null;
   const stages = selectedPipeline?.stages ?? [];
 
-  const currentPipeline = pipelines.find((p) => p.id === mapping?.pipeline_id);
-  const currentStage = currentPipeline?.stages.find((s) => s.id === mapping?.initial_stage_id);
+  const currentStage = selectedPipeline?.stages.find((s) => s.id === mapping?.initial_stage_id);
 
-  const dirty =
-    String(mapping?.pipeline_id ?? '') !== pipelineId ||
-    String(mapping?.initial_stage_id ?? '') !== stageId;
+  const dirty = String(mapping?.initial_stage_id ?? '') !== stageId;
 
   async function save() {
     setError(null);
@@ -317,7 +318,10 @@ function MappingRow({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           brand,
-          pipeline_id: Number(pipelineId),
+          // pipeline_id is the brand id itself — sent only for response
+          // shape compatibility with the older endpoint. The backend
+          // ignores it but cross-checks numeric equality.
+          pipeline_id: pipelineId ? Number(pipelineId) : null,
           initial_stage_id: Number(stageId),
         }),
       });
@@ -330,7 +334,7 @@ function MappingRow({
   }
 
   async function clearMapping() {
-    if (!confirm(`Clear pipeline mapping for "${brandName}"? Push-to-CRM will fall back to env vars / numeric brand id.`)) return;
+    if (!confirm(`Clear initial stage for "${brandName}"? Push-to-CRM will fall back to env vars (CRM_PIPELINE_<BRAND>_INITIAL_STAGE_ID or CRM_DEFAULT_INITIAL_STAGE_ID).`)) return;
     setError(null);
     setBusy(true);
     try {
@@ -339,7 +343,6 @@ function MappingRow({
       });
       const data = await res.json();
       if (!res.ok) { setError(data?.error ?? 'Could not clear'); return; }
-      setPipelineId('');
       setStageId('');
       onSaved();
     } finally {
@@ -352,15 +355,22 @@ function MappingRow({
       <div className="flex items-baseline justify-between gap-3 mb-3 flex-wrap">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-text-primary">{brandName}</div>
-          {mapping ? (
+          <div className="text-[11px] text-text-secondary mt-0.5">
+            CRM pipeline:{' '}
+            {selectedPipeline
+              ? <>{selectedPipeline.name} <span className="font-mono text-text-muted">(#{selectedPipeline.id})</span></>
+              : pipelineId
+                ? <span className="text-warning">#{pipelineId} — not found in CRM</span>
+                : <span className="text-warning">brand id is not numeric — push-to-CRM cannot resolve a pipeline</span>}
+          </div>
+          {mapping?.initial_stage_id ? (
             <div className="text-[11px] text-text-secondary mt-0.5">
-              Currently: {currentPipeline?.name ?? `pipeline #${mapping.pipeline_id}`} →{' '}
-              {currentStage?.name ?? `stage #${mapping.initial_stage_id}`}
+              Initial stage: {currentStage?.name ?? `#${mapping.initial_stage_id}`}
               {mapping.updated_by_name && ` · set by ${mapping.updated_by_name}`}
             </div>
           ) : (
             <div className="text-[11px] text-warning mt-0.5">
-              Not mapped — push-to-CRM falls back to env vars for this brand.
+              No initial stage set — push-to-CRM falls back to env vars for this brand.
             </div>
           )}
         </div>
@@ -385,22 +395,7 @@ function MappingRow({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
-        <div>
-          <label className="block text-[11px] font-medium text-text-secondary mb-1">Pipeline</label>
-          <select
-            value={pipelineId}
-            onChange={(e) => { setPipelineId(e.target.value); setStageId(''); }}
-            disabled={busy || pipelines.length === 0}
-            className="w-full text-xs border border-border-default rounded px-2 py-1.5 bg-elevated text-text-default focus:outline-none focus:ring-2 focus:ring-brand/15 disabled:opacity-50"
-          >
-            <option value="">— Select pipeline —</option>
-            {pipelines.map((p) => (
-              <option key={p.id} value={p.id}>{p.name} (#{p.id})</option>
-            ))}
-          </select>
-        </div>
-
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-2 items-end">
         <div>
           <label className="block text-[11px] font-medium text-text-secondary mb-1">Initial stage</label>
           <select
@@ -409,7 +404,11 @@ function MappingRow({
             disabled={busy || stages.length === 0}
             className="w-full text-xs border border-border-default rounded px-2 py-1.5 bg-elevated text-text-default focus:outline-none focus:ring-2 focus:ring-brand/15 disabled:opacity-50"
           >
-            <option value="">{stages.length === 0 ? '— pick a pipeline first —' : '— Select stage —'}</option>
+            <option value="">
+              {stages.length === 0
+                ? selectedPipeline ? '— pipeline has no stages —' : '— pipeline unresolved —'
+                : '— Select stage —'}
+            </option>
             {stages.map((s) => (
               <option key={s.id} value={s.id}>{s.name} (#{s.id})</option>
             ))}
@@ -420,12 +419,12 @@ function MappingRow({
           variant="primary"
           size="sm"
           onClick={save}
-          disabled={busy || !dirty || !pipelineId || !stageId}
+          disabled={busy || !dirty || !stageId}
         >
-          {busy ? 'Saving…' : mapping ? 'Update' : 'Save'}
+          {busy ? 'Saving…' : mapping?.initial_stage_id ? 'Update' : 'Save'}
         </Button>
 
-        {mapping && (
+        {mapping?.initial_stage_id && (
           <Button
             variant="ghost"
             size="sm"
