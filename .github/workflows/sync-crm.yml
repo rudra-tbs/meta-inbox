@@ -1,0 +1,59 @@
+# Free GitHub-Actions-driven cron that replaces Vercel Cron on Hobby
+# tier (Hobby caps cron at once/day). Hits the same /api/cron/sync-crm
+# endpoint Vercel Cron would have hit, with the same Bearer secret.
+#
+# Note on GitHub's cron behaviour:
+#   - Minimum interval is 5 minutes.
+#   - Runs are best-effort — under heavy GitHub load runs can be delayed
+#     by 5–30 min or skipped entirely. For tight SLAs, switch to a
+#     dedicated scheduler (Upstash QStash, cron-job.org) or upgrade
+#     Vercel to Pro.
+#   - Scheduled workflows pause if the repo has no activity for 60 days.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   CRON_SECRET  — same value as the Vercel env var of the same name
+#   APP_URL      — optional; defaults to https://inbox.acceltancy.in
+
+name: Sync CRM
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  # Lets you fire the sync manually from the Actions tab whenever you
+  # want without waiting for the next tick.
+  workflow_dispatch:
+
+# Don't pile up runs if a previous one is still in flight (rare, but the
+# sync hits MySQL + Supabase so we'd rather skip than queue).
+concurrency:
+  group: sync-crm
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Hit /api/cron/sync-crm
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -u
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::CRON_SECRET secret is not set in repo settings"
+            exit 1
+          fi
+          url="${APP_URL:-https://inbox.acceltancy.in}/api/cron/sync-crm"
+          echo "Pinging $url"
+          response=$(curl -sS --max-time 60 -w "\n%{http_code}" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "$url")
+          status=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "Status: $status"
+          echo "Body:   $body"
+          if [ "$status" != "200" ]; then
+            echo "::error::Sync endpoint returned $status"
+            exit 1
+          fi
