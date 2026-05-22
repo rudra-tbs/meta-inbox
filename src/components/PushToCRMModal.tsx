@@ -10,8 +10,23 @@ interface CRMUser {
   email: string;
 }
 
+// Preview payload returned by /api/conversations/[id]/push-preview.
+// Resolves the pipeline + initial stage names so the modal can show
+// "About to create" without the admin having to recall what brand 67
+// maps to in CRM. Defaults to nulls if anything fails — modal falls
+// back to a less-informative preview rather than refusing to render.
+interface PushPreview {
+  brand: string;
+  brand_name: string | null;
+  pipeline_id: number | null;
+  pipeline_name: string | null;
+  initial_stage_id: number | null;
+  initial_stage_name: string | null;
+}
+
 interface PushToCRMModalProps {
   conversation: Conversation;
+  brandName?: string | null;
   messages: Message[];
   currentUser: AppUser;
   onSuccess: (dealId: number) => void;
@@ -46,6 +61,7 @@ function lastAIMessages(messages: Message[], count = 5): string {
 
 export default function PushToCRMModal({
   conversation,
+  brandName,
   messages,
   currentUser,
   onSuccess,
@@ -53,6 +69,9 @@ export default function PushToCRMModal({
 }: PushToCRMModalProps) {
   const [crmUsers, setCRMUsers] = useState<CRMUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  // Preview state: pipeline + initial stage names so the admin can
+  // catch a wrong mapping BEFORE the deal lands in CRM.
+  const [preview, setPreview] = useState<PushPreview | null>(null);
 
   const [clientName, setClientName] = useState(conversation.contact_name ?? '');
   const [city, setCity] = useState(conversation.city ?? '');
@@ -80,6 +99,28 @@ export default function PushToCRMModal({
       .catch(() => {})
       .finally(() => setLoadingUsers(false));
   }, [currentUser.email]);
+
+  // Pull the resolved pipeline + initial-stage that THIS push would land
+  // in, so the modal can show "About to create — Pipeline: TBS,
+  // Initial stage: Qualified" up front. Server endpoint resolves
+  // brand → pipeline id (brand IS the pipeline id post-cleanup) and
+  // brand_settings.initial_stage_id → stage name in one round-trip.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/conversations/${conversation.id}/push-preview`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: PushPreview | null) => {
+        if (!cancelled && data) setPreview(data);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [conversation.id]);
+
+  // Resolve the chosen CRM user's display name for the preview line.
+  const selectedCrmUser = crmUsers.find((u) => String(u.id) === assignToCRMUserId) ?? null;
+  const ownerName = selectedCrmUser
+    ? `${selectedCrmUser.first_name} ${selectedCrmUser.last_name}`.trim()
+    : '— Unassigned —';
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -132,6 +173,44 @@ export default function PushToCRMModal({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+          {/* About-to-create preview. Pipeline + initial stage come from
+              the server preview endpoint; brand + owner are resolved
+              client-side. Renders even when the preview endpoint hasn't
+              loaded yet — falls back to "loading…" placeholders. */}
+          <div className="rounded-md border border-border-default bg-canvas px-3 py-2.5 text-[12px]">
+            <p className="text-[10px] uppercase tracking-wide font-semibold text-text-muted mb-1.5">
+              About to create
+            </p>
+            <dl className="grid grid-cols-[80px_1fr] gap-y-1 gap-x-3">
+              <dt className="text-text-secondary">Deal</dt>
+              <dd className="text-text-default font-medium truncate">
+                {clientName.trim() || <span className="text-text-disabled">(fill client name)</span>}
+              </dd>
+              <dt className="text-text-secondary">Brand</dt>
+              <dd className="text-text-default truncate">
+                {brandName ?? preview?.brand_name ?? <span className="text-text-muted">{preview?.brand ?? conversation.brand}</span>}
+              </dd>
+              <dt className="text-text-secondary">Pipeline</dt>
+              <dd className="text-text-default truncate">
+                {preview
+                  ? preview.pipeline_name
+                    ? <>{preview.pipeline_name} <span className="text-text-muted font-mono">#{preview.pipeline_id}</span></>
+                    : <span className="text-warning">unresolved — admin must map pipeline</span>
+                  : <span className="text-text-muted">…</span>}
+              </dd>
+              <dt className="text-text-secondary">Initial stage</dt>
+              <dd className="text-text-default truncate">
+                {preview
+                  ? preview.initial_stage_name
+                    ? <>{preview.initial_stage_name} <span className="text-text-muted font-mono">#{preview.initial_stage_id}</span></>
+                    : <span className="text-warning">not set — push will use env-var fallback or fail</span>
+                  : <span className="text-text-muted">…</span>}
+              </dd>
+              <dt className="text-text-secondary">Owner</dt>
+              <dd className="text-text-default truncate">{ownerName}</dd>
+            </dl>
+          </div>
+
           {/* Client name */}
           <div>
             <label className="block text-[11px] font-medium text-text-secondary mb-1">Client name *</label>
