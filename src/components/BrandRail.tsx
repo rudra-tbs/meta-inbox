@@ -32,6 +32,29 @@ function shortLabel(brand: Brand): string {
   return brand.name.slice(0, 3).toUpperCase();
 }
 
+// Fallback palette used when brand_settings.color is null. Six tones
+// curated so adjacent brand chips stay visually distinct; we hash the
+// brand id (stable across reloads) and pick deterministically. Once an
+// admin sets a custom color in /admin → Pipelines, that wins.
+const FALLBACK_PALETTE = [
+  '#7c3aed', // violet — matches default brand tone
+  '#0891b2', // cyan
+  '#16a34a', // green
+  '#ea580c', // orange
+  '#db2777', // pink
+  '#0284c7', // sky
+];
+
+function hashCode(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+function paletteFor(id: string): string {
+  return FALLBACK_PALETTE[hashCode(id) % FALLBACK_PALETTE.length];
+}
+
 export default function BrandRail({
   brands,
   activeBrand,
@@ -63,16 +86,15 @@ export default function BrandRail({
         ) : (
           brands.map((b) => {
             const isActive = b.id === activeBrand;
-            const hasColor = !!b.color;
             const hasLogo = !!b.logo_url;
+            // Custom color from brand_settings wins; otherwise pick a
+            // deterministic colour from the fallback palette so chips
+            // never look generic-grey.
+            const color = b.color || paletteFor(b.id);
 
-            // Inline style only kicks in when a custom color is set, so the
-            // Tailwind fallback styles stay applied for un-themed brands.
-            const style = hasColor
-              ? isActive
-                ? { backgroundColor: b.color!, color: '#fff' }
-                : { backgroundColor: `${b.color}33` /* 20% alpha */, color: '#fff' }
-              : undefined;
+            const style = isActive
+              ? { backgroundColor: color, color: '#fff' }
+              : { backgroundColor: `${color}33` /* 20% alpha */, color: '#fff' };
 
             return (
               <button
@@ -82,14 +104,11 @@ export default function BrandRail({
                 aria-label={`Switch to ${b.name}`}
                 aria-pressed={isActive}
                 style={style}
-                className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold transition-all overflow-hidden
-                  ${hasColor
-                    ? isActive
-                      ? 'shadow-lg ring-1 ring-white/30'
-                      : 'hover:opacity-90'
-                    : isActive
-                      ? 'bg-elevated text-text-primary shadow-lg ring-1 ring-white/20'
-                      : 'bg-white/5 text-white/70 hover:bg-white/10 hover:text-text-inverse'}`}
+                className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold transition-all overflow-hidden ${
+                  isActive
+                    ? 'shadow-lg ring-1 ring-white/30'
+                    : 'hover:opacity-90'
+                }`}
               >
                 {hasLogo ? (
                   // eslint-disable-next-line @next/next/no-img-element

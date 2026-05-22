@@ -285,20 +285,28 @@ export default function ChatWindow({
             </button>
           )}
           <div className="min-w-0">
-            <div className="flex items-baseline gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
               <h2 className="text-[15px] font-semibold text-text-primary truncate">{displayName}</h2>
               {score >= 60 && (
-                <span title={`Lead score ${score}`} className="text-[11px] font-medium text-danger flex-shrink-0">
+                <span
+                  title={`Lead score ${score}`}
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-danger bg-danger-soft border border-danger/20 rounded-full px-1.5 py-0.5 flex-shrink-0"
+                >
                   🔥 {score}
                 </span>
               )}
               {isNewLead && (
                 <span className="inline-flex items-center gap-1 text-[11px] text-success flex-shrink-0">
-                  <Dot tone="success" /> New lead
+                  <Dot tone="success" /> New
                 </span>
               )}
               {!isNewLead && daysSinceLast !== null && (
-                <span className="text-[11px] text-text-muted flex-shrink-0">Returning · {daysSinceLast}d ago</span>
+                <span
+                  title={`Last human reply ${daysSinceLast === 0 ? 'today' : `${daysSinceLast} day${daysSinceLast === 1 ? '' : 's'} ago`}`}
+                  className="text-[11px] text-text-muted flex-shrink-0"
+                >
+                  {daysSinceLast === 0 ? 'Today' : `${daysSinceLast}d`}
+                </span>
               )}
               {isSnoozed && (
                 <span className="inline-flex items-center gap-1 text-[11px] text-snooze flex-shrink-0">
