@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Conversation, ConversationEvent } from '@/types';
 import Dot from './ui/Dot';
+import { toast } from '@/lib/toast';
 
 interface DetailRailProps {
   conversation: Conversation;
@@ -59,6 +60,132 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
   );
 }
 
+// Inline-editable variant of InfoRow. Click the value (or pencil) to
+// switch into an input; Enter to save, Escape to cancel, blur also
+// saves. Used for the qualification fields in the Lead section.
+function EditableRow({
+  label,
+  value,
+  placeholder,
+  onSave,
+}: {
+  label: string;
+  value: string | null;
+  placeholder?: string;
+  onSave: (next: string | null) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? '');
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      setDraft(value ?? '');
+      // Defer focus so the input is mounted before we try to focus it.
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  }, [editing, value]);
+
+  async function commit() {
+    const trimmed = draft.trim();
+    const next = trimmed === '' ? null : trimmed;
+    if (next === (value ?? null)) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(next);
+    } finally {
+      setSaving(false);
+      setEditing(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-baseline justify-between gap-3 py-1">
+        <span className="text-xs text-text-secondary">{label}</span>
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+            else if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
+          }}
+          onBlur={commit}
+          disabled={saving}
+          placeholder={placeholder}
+          className="flex-1 max-w-[60%] text-xs bg-canvas border border-border-strong rounded px-1.5 py-0.5 text-text-default focus:outline-none focus:ring-2 focus:ring-brand/15"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex items-baseline justify-between gap-3 py-1 group cursor-pointer"
+      onClick={() => setEditing(true)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(true); }
+      }}
+    >
+      <span className="text-xs text-text-secondary">{label}</span>
+      <span className="flex items-center gap-1.5">
+        <span className={`text-xs ${value ? 'text-text-default font-medium' : 'text-text-disabled italic'}`}>
+          {value || (placeholder ?? '—')}
+        </span>
+        <span className="text-text-muted opacity-0 group-hover:opacity-100 transition-opacity text-[10px]" aria-hidden>
+          ✎
+        </span>
+      </span>
+    </div>
+  );
+}
+
+// Initials + colored circle used in the activity timeline. The hue is
+// hash-derived from the actor name so two events from the same person
+// always look the same.
+function ActivityAvatar({ name, isSystem }: { name: string; isSystem?: boolean }) {
+  if (isSystem) {
+    return (
+      <span
+        className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] flex-shrink-0 bg-elevated border border-border-default text-text-secondary"
+        aria-hidden
+      >
+        ✨
+      </span>
+    );
+  }
+  const initials = name.trim().split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase() || '?';
+  // Cheap deterministic hue.
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+  const hue = Math.abs(hash) % 360;
+  return (
+    <span
+      className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-semibold text-white flex-shrink-0"
+      style={{ backgroundColor: `hsl(${hue}, 55%, 45%)` }}
+      aria-hidden
+    >
+      {initials}
+    </span>
+  );
+}
+
+// Human-readable currency for the stage value chip. ₹ with k/L/Cr
+// suffixes — matches what an Indian RM expects to read.
+function formatINRShort(n: number): string {
+  if (n >= 1_00_00_000) return `₹${(n / 1_00_00_000).toFixed(n % 1_00_00_000 === 0 ? 0 : 1)}Cr`;
+  if (n >= 1_00_000) return `₹${(n / 1_00_000).toFixed(n % 1_00_000 === 0 ? 0 : 1)}L`;
+  if (n >= 1_000) return `₹${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}k`;
+  return `₹${n}`;
+}
+
 interface TaxonomyEntry { name: string; display_name: string; color: string | null }
 
 export default function DetailRail({ conversation, open, onClose, onConversationUpdate }: DetailRailProps) {
@@ -81,6 +208,14 @@ export default function DetailRail({ conversation, open, onClose, onConversation
     missing: MissingField[];
     message: string;
   }>(null);
+  // Deal value pulled from CRM via /api/conversations/[id]/crm-stages.
+  // Surfaced as a chip next to the stage dropdown.
+  const [dealValue, setDealValue] = useState<number | null>(null);
+  // Flash highlight on the stage dropdown when crm_stage_id changes
+  // out from under us (cron sync, RM in another tab, CRM Dashboard
+  // direct edit). Cleared after the animation duration.
+  const [stageJustChanged, setStageJustChanged] = useState(false);
+  const prevStageIdRef = useRef<number | null>(conversation.crm_stage_id);
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load tag taxonomy once when the rail opens. Cheap query (~tens of rows
@@ -109,9 +244,11 @@ export default function DetailRail({ conversation, open, onClose, onConversation
   // visible, so the dropdown has the full list ready. Re-fetches when
   // the conversation changes, or when push state changes (e.g. cron just
   // marked a deal deleted → next open of a freshly-pushed conversation
-  // should fetch fresh stages).
+  // should fetch fresh stages). Same call now returns the live deal
+  // value for the chip and the venue/city snapshot for prefill.
   useEffect(() => {
     setStages(null);
+    setDealValue(null);
     setStageError(null);
     if (!open || !conversation.pushed_to_crm) return;
     let cancelled = false;
@@ -120,10 +257,55 @@ export default function DetailRail({ conversation, open, onClose, onConversation
       .then((data) => {
         if (cancelled) return;
         if (data?.stages) setStages(data.stages);
+        if (typeof data?.deal?.value === 'number') setDealValue(data.deal.value);
       })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [open, conversation.id, conversation.pushed_to_crm]);
+
+  // Detect remote stage changes (cron sync, another tab, CRM Dashboard
+  // direct edit). When the prop's crm_stage_id changes between renders
+  // we briefly flash the dropdown so the operator notices the shift
+  // without having to inspect.
+  useEffect(() => {
+    const prev = prevStageIdRef.current;
+    const next = conversation.crm_stage_id;
+    if (prev !== null && next !== null && prev !== next) {
+      setStageJustChanged(true);
+      const t = setTimeout(() => setStageJustChanged(false), 1800);
+      return () => clearTimeout(t);
+    }
+    prevStageIdRef.current = next;
+  }, [conversation.crm_stage_id]);
+
+  // Inline-editable handler for the Lead-section fields. Single PATCH
+  // per field, optimistic update on success. Toast on failure so the
+  // operator can recover.
+  async function patchLeadField(field: 'name' | 'city' | 'wedding_date' | 'guest_count' | 'budget_range' | 'service_type', next: string | null) {
+    if (!conversation.contact_id) {
+      toast.error('Cannot edit — no contact linked');
+      return;
+    }
+    const res = await fetch(`/api/contacts/${conversation.contact_id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: next }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast.error('Could not save', { description: data?.error });
+      return;
+    }
+    // Reflect locally so the row updates without waiting for realtime.
+    const patch: Partial<Conversation> = {};
+    if (field === 'name') patch.contact_name = next;
+    if (field === 'city') patch.city = next;
+    if (field === 'wedding_date') patch.wedding_date = next;
+    if (field === 'guest_count') patch.guest_count = next;
+    if (field === 'budget_range') patch.budget_range = next;
+    if (field === 'service_type') patch.service_type = next;
+    onConversationUpdate({ ...conversation, ...patch });
+  }
 
   function saveNotes(value: string) {
     setNotesDraft(value);
@@ -153,15 +335,32 @@ export default function DetailRail({ conversation, open, onClose, onConversation
     onConversationUpdate({ ...conversation, tags });
   }
 
+  // Normalize identically to the API so the optimistic UI matches
+  // what gets persisted (#VIP / #vip / #Vip → "vip"). Returns null
+  // when the string normalizes to empty.
+  function normalizeTag(raw: string): string | null {
+    const t = raw.trim().toLowerCase().replace(/^#+/, '');
+    return t === '' ? null : t;
+  }
+
   function addTag(rawValue?: string) {
-    // Normalize identically to the API so the optimistic UI matches what gets
-    // persisted (#VIP / #vip / #Vip → "vip").
-    const t = (rawValue ?? tagInput).trim().toLowerCase().replace(/^#/, '');
-    if (!t) return;
+    // Accept comma / newline / semicolon-separated input. Paste
+    // "vip, urgent, decor" → three tags, not one tag with commas.
+    const input = rawValue ?? tagInput;
+    const parts = input.split(/[,;\n]+/).map(normalizeTag).filter((t): t is string => !!t);
+    if (parts.length === 0) return;
     const current = conversation.tags ?? [];
-    if (current.includes(t)) { setTagInput(''); return; }
-    setTags([...current, t]);
+    const seen = new Set(current);
+    const added: string[] = [];
+    for (const t of parts) {
+      if (!seen.has(t)) {
+        seen.add(t);
+        added.push(t);
+      }
+    }
     setTagInput('');
+    if (added.length === 0) return;
+    setTags([...current, ...added]);
   }
 
   function removeTag(tag: string) {
@@ -303,13 +502,27 @@ export default function DetailRail({ conversation, open, onClose, onConversation
         </button>
       </div>
 
-      {/* Lead snapshot */}
+      {/* Lead snapshot — inline-editable. Hover any row to see the pencil
+          icon; click to switch into an input. Enter to save, Esc to cancel. */}
       <Section title="Lead">
-        <InfoRow label="City" value={conversation.city} />
-        <InfoRow label="Event date" value={conversation.wedding_date} />
-        <InfoRow label="Guests" value={conversation.guest_count} />
-        <InfoRow label="Budget" value={conversation.budget_range} />
-        <InfoRow label="Service" value={conversation.service_type} />
+        {conversation.contact_id ? (
+          <>
+            <EditableRow label="City" value={conversation.city} placeholder="—" onSave={(v) => patchLeadField('city', v)} />
+            <EditableRow label="Event date" value={conversation.wedding_date} placeholder="—" onSave={(v) => patchLeadField('wedding_date', v)} />
+            <EditableRow label="Guests" value={conversation.guest_count} placeholder="—" onSave={(v) => patchLeadField('guest_count', v)} />
+            <EditableRow label="Budget" value={conversation.budget_range} placeholder="—" onSave={(v) => patchLeadField('budget_range', v)} />
+            <EditableRow label="Service" value={conversation.service_type} placeholder="—" onSave={(v) => patchLeadField('service_type', v)} />
+          </>
+        ) : (
+          <>
+            <InfoRow label="City" value={conversation.city} />
+            <InfoRow label="Event date" value={conversation.wedding_date} />
+            <InfoRow label="Guests" value={conversation.guest_count} />
+            <InfoRow label="Budget" value={conversation.budget_range} />
+            <InfoRow label="Service" value={conversation.service_type} />
+            <p className="text-[10px] text-text-muted mt-2 italic">Send a message to link this conversation to a contact, then fields become editable.</p>
+          </>
+        )}
         {(conversation.lead_score ?? 0) > 0 && (
           <div className="flex items-baseline justify-between gap-3 py-1 mt-1 pt-2 border-t border-border-subtle">
             <span className="text-xs text-text-secondary">Lead score</span>
@@ -354,7 +567,27 @@ export default function DetailRail({ conversation, open, onClose, onConversation
           })}
           <input
             value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
+            onChange={(e) => {
+              // Comma-trigger: typing "," (or ";") commits the current
+              // value as a tag without making the user press Enter.
+              // Keeps the input feel fast for power users.
+              const v = e.target.value;
+              if (/[,;]/.test(v)) {
+                addTag(v);
+              } else {
+                setTagInput(v);
+              }
+            }}
+            onPaste={(e) => {
+              // If the clipboard contains commas/newlines/semicolons,
+              // treat the whole paste as a multi-tag entry and skip the
+              // default single-string paste.
+              const text = e.clipboardData.getData('text');
+              if (text && /[,;\n]/.test(text)) {
+                e.preventDefault();
+                addTag(text);
+              }
+            }}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
             list={`tag-taxonomy-${conversation.id}`}
             placeholder="+ add"
@@ -393,7 +626,20 @@ export default function DetailRail({ conversation, open, onClose, onConversation
       {/* CRM status */}
       {conversation.pushed_to_crm && (
         <Section title="CRM">
-          <InfoRow label="Deal" value={`#${conversation.crm_deal_id}`} />
+          <div className="flex items-baseline justify-between gap-3 py-1">
+            <span className="text-xs text-text-secondary">Deal</span>
+            <span className="text-xs flex items-center gap-2">
+              <span className="text-text-default font-medium">#{conversation.crm_deal_id}</span>
+              {dealValue !== null && dealValue > 0 && (
+                <span
+                  className="text-[10px] font-semibold bg-brand-soft text-brand border border-brand/20 rounded-full px-1.5 py-0.5"
+                  title={`Deal value ₹${dealValue.toLocaleString('en-IN')}`}
+                >
+                  {formatINRShort(dealValue)}
+                </span>
+              )}
+            </span>
+          </div>
           <div className="flex items-baseline justify-between gap-3 py-1">
             <span className="text-xs text-text-secondary">Stage</span>
             {stages && stages.length > 0 ? (
@@ -401,7 +647,14 @@ export default function DetailRail({ conversation, open, onClose, onConversation
                 value={conversation.crm_stage_id ?? ''}
                 onChange={(e) => changeStage(parseInt(e.target.value, 10))}
                 disabled={updatingStage}
-                className="text-xs bg-canvas border border-border-default rounded px-1.5 py-1 max-w-[60%] text-text-default focus:outline-none focus:border-border-strong disabled:opacity-50"
+                // Brief flash highlight when the stage id changes out from
+                // under us via realtime (cron or another tab). Driven by
+                // the stageJustChanged state — clears itself after 1.8s.
+                className={`text-xs bg-canvas border rounded px-1.5 py-1 max-w-[60%] text-text-default focus:outline-none focus:border-border-strong disabled:opacity-50 transition-all duration-700 ${
+                  stageJustChanged
+                    ? 'border-brand ring-2 ring-brand/30 bg-brand-soft'
+                    : 'border-border-default'
+                }`}
               >
                 {/* If the current stage isn't in the dropdown (e.g. the CRM
                     deactivated it), surface it as a disabled option so the
@@ -443,14 +696,26 @@ export default function DetailRail({ conversation, open, onClose, onConversation
           <p className="text-xs text-text-muted">No activity yet</p>
         ) : (
           <ol className="space-y-2.5">
-            {events.map((e) => (
-              <li key={e.id} className="text-xs">
-                <p className="text-text-default leading-snug">{eventLabel(e)}</p>
-                <p className="text-[10px] text-text-muted mt-0.5">
-                  {new Date(e.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                </p>
-              </li>
-            ))}
+            {events.map((e) => {
+              const isSystemEvent =
+                !e.actor_name ||
+                e.event_type === 'ABSTAIN' ||
+                e.event_type === 'CALLBACK_DETECTED' ||
+                e.event_type === 'CONTACT_MERGED' ||
+                e.event_type === 'CRM_DEAL_DELETED' ||
+                (e.event_type === 'CRM_STAGE_CHANGED' && e.metadata?.source === 'crm-sync');
+              return (
+                <li key={e.id} className="text-xs flex items-start gap-2">
+                  <ActivityAvatar name={e.actor_name ?? 'system'} isSystem={isSystemEvent} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-text-default leading-snug break-words">{eventLabel(e)}</p>
+                    <p className="text-[10px] text-text-muted mt-0.5">
+                      {new Date(e.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
           </ol>
         )}
       </Section>

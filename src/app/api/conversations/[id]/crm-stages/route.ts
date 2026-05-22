@@ -14,7 +14,12 @@ import { queryCRM } from '@/lib/mysql-crm';
 // in. Resolves the pipeline from the live CRM deal record (not from our
 // brand_pipelines mapping) — if a planner reassigned the deal to a
 // different pipeline in CRM, we follow the deal there.
-interface DealRow { pipeline_id: number | null }
+interface DealRow {
+  pipeline_id: number | null;
+  value: string | null;   // mysql2 returns DECIMAL as string
+  venue: string | null;
+  city: string | null;
+}
 interface StageRow { id: number; name: string; stage_order: number | null }
 
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
@@ -50,18 +55,30 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 
   try {
     const deals = await queryCRM<DealRow[]>(
-      'SELECT pipeline_id FROM deals WHERE id = ? AND is_deleted = 0 LIMIT 1',
+      'SELECT pipeline_id, value, venue, city FROM deals WHERE id = ? AND is_deleted = 0 LIMIT 1',
       [conv.crm_deal_id],
     );
-    const pipelineId = deals[0]?.pipeline_id;
-    if (!pipelineId) {
+    const deal = deals[0];
+    if (!deal?.pipeline_id) {
       return NextResponse.json({ error: 'Deal not found or has no pipeline' }, { status: 404 });
     }
     const stages = await queryCRM<StageRow[]>(
       'SELECT id, name, stage_order FROM stages WHERE pipeline_id = ? ORDER BY stage_order, id',
-      [pipelineId],
+      [deal.pipeline_id],
     );
-    return NextResponse.json({ pipeline_id: pipelineId, stages });
+    return NextResponse.json({
+      pipeline_id: deal.pipeline_id,
+      stages,
+      // Snapshot of deal fields the DetailRail wants to render alongside
+      // the stage dropdown (value chip) and pre-fill into the
+      // StageRequirementsModal in subsequent stage moves. Read-only here;
+      // writes go via PATCH /api/conversations/[id]/crm-deal.
+      deal: {
+        value: deal.value != null ? Number(deal.value) : null,
+        venue: deal.venue,
+        city: deal.city,
+      },
+    });
   } catch (err) {
     return NextResponse.json(
       { error: 'CRM query failed', details: err instanceof Error ? err.message : String(err) },

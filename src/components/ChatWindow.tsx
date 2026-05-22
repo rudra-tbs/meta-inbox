@@ -75,6 +75,7 @@ export default function ChatWindow({
   const [dismissingCallback, setDismissingCallback] = useState(false);
   const [showCRMModal, setShowCRMModal] = useState(false);
   const [showSnoozeMenu, setShowSnoozeMenu] = useState(false);
+  const [showSnoozeCustom, setShowSnoozeCustom] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [templates, setTemplates] = useState<ReplyTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -213,12 +214,46 @@ export default function ChatWindow({
   async function snooze(hours: number | null) {
     const snoozedUntil = hours ? new Date(Date.now() + hours * 3600 * 1000).toISOString() : null;
     setShowSnoozeMenu(false);
+    setShowSnoozeCustom(false);
     await fetch(`/api/conversations/${conversation.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ snoozed_until: snoozedUntil }),
     });
     onConversationUpdate({ ...conversation, snoozed_until: snoozedUntil });
+    if (snoozedUntil) {
+      toast.success(`Snoozed until ${new Date(snoozedUntil).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`);
+    } else {
+      toast.success('Unsnoozed');
+    }
+  }
+
+  // Custom snooze flow — opened from the menu, shows an inline
+  // datetime-local input so the operator can pick any future moment.
+  // The standard datetime-local widget on most browsers covers the
+  // "Friday 4 PM" use case without us building a date picker.
+  async function snoozeUntil(isoLocal: string) {
+    // datetime-local gives us "YYYY-MM-DDTHH:mm" in the user's local
+    // time. Convert to a real ISO with the local offset. Past times
+    // are rejected client-side.
+    const date = new Date(isoLocal);
+    if (isNaN(date.getTime())) {
+      toast.error('Invalid date/time');
+      return;
+    }
+    if (date.getTime() <= Date.now() + 60_000) {
+      toast.error('Pick a time at least a minute in the future');
+      return;
+    }
+    setShowSnoozeMenu(false);
+    setShowSnoozeCustom(false);
+    await fetch(`/api/conversations/${conversation.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snoozed_until: date.toISOString() }),
+    });
+    onConversationUpdate({ ...conversation, snoozed_until: date.toISOString() });
+    toast.success(`Snoozed until ${date.toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`);
   }
 
   const displayName = conversation.contact_name || `+${conversation.phone_number}`;
@@ -292,8 +327,8 @@ export default function ChatWindow({
               💤
             </Button>
             {showSnoozeMenu && (
-              <div className="absolute top-full right-0 mt-1 bg-elevated border border-border-default rounded-lg shadow-lg z-10 py-1 min-w-[160px]">
-                {SNOOZE_PRESETS.map((p) => (
+              <div className="absolute top-full right-0 mt-1 bg-elevated border border-border-default rounded-lg shadow-lg z-10 py-1 min-w-[200px]">
+                {!showSnoozeCustom && SNOOZE_PRESETS.map((p) => (
                   <button
                     key={p.label}
                     onClick={() => snooze(p.hours)}
@@ -302,7 +337,53 @@ export default function ChatWindow({
                     {p.label}
                   </button>
                 ))}
-                {isSnoozed && (
+                {!showSnoozeCustom && (
+                  <>
+                    <hr className="my-1 border-border-default" />
+                    <button
+                      onClick={() => setShowSnoozeCustom(true)}
+                      className="block w-full text-left text-xs px-3 py-1.5 hover:bg-canvas text-text-default"
+                    >
+                      Custom…
+                    </button>
+                  </>
+                )}
+                {showSnoozeCustom && (
+                  <div className="px-3 py-2 space-y-2">
+                    <label className="block text-[10px] uppercase tracking-wide text-text-muted">Snooze until</label>
+                    {/* `datetime-local` honours the user's locale + 24h preference
+                        without us shipping a picker library. Default to two
+                        hours out so the input isn't empty. */}
+                    <input
+                      type="datetime-local"
+                      defaultValue={(() => {
+                        const d = new Date(Date.now() + 2 * 3600 * 1000);
+                        const pad = (n: number) => String(n).padStart(2, '0');
+                        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                      })()}
+                      onChange={(e) => { e.currentTarget.dataset.iso = e.target.value; }}
+                      className="w-full text-xs bg-canvas border border-border-default rounded px-2 py-1 focus:outline-none focus:border-border-strong text-text-default"
+                    />
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        onClick={() => setShowSnoozeCustom(false)}
+                        className="text-[11px] text-text-secondary hover:text-text-default"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          const input = (e.currentTarget.parentElement?.parentElement?.querySelector('input[type="datetime-local"]') as HTMLInputElement | null);
+                          if (input?.value) snoozeUntil(input.value);
+                        }}
+                        className="text-[11px] text-brand font-medium hover:text-brand-hover"
+                      >
+                        Snooze
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {isSnoozed && !showSnoozeCustom && (
                   <>
                     <hr className="my-1 border-border-default" />
                     <button onClick={() => snooze(null)} className="block w-full text-left text-xs px-3 py-1.5 hover:bg-canvas text-danger">
