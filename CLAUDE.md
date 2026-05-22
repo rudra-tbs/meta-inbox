@@ -942,6 +942,57 @@ Both render readably in the DetailRail activity timeline.
 
 - `GET /api/cron/sync-crm` — Bearer-authed; runs the bidirectional reconciliation.
 - `GET /api/conversations/[id]/crm-stages` — user-authed; returns `{ pipeline_id, stages: [{id, name, stage_order}] }`.
-- `PATCH /api/conversations/[id]/crm-stage` — user-authed; body `{ stage_id }`; updates CRM + Supabase + logs event.
+- `PATCH /api/conversations/[id]/crm-stage` — user-authed; body `{ stage_id }`; validates against the stage-transition matrix (see below) before touching CRM; updates CRM + Supabase + logs event.
+- `PATCH /api/conversations/[id]/crm-deal` — user-authed; body `{ venue?, city?, value?, label_ids? }`; writes "precursor" fields to `thebrideside.deals` via raw MySQL so the operator can fill what a stage transition requires. Used by the modal-on-fail flow in DetailRail.
 - `POST /api/conversations/refresh-stages?conversation_id=…` (existing) — user-triggered single-deal force refresh; still wired to the "Refresh from CRM" button in DetailRail for impatient operators.
+
+---
+
+## Stage-transition requirements (mirrored from CRM frontend)
+
+The CRM backend (Java/Spring Boot in `shubham-brideside/TBSCRM-Backend`) does NOT enforce field-completeness rules when a deal moves between stages — those rules live entirely in the CRM frontend handlers (`Deals.tsx:7772` kanban, `DealDetail.tsx:2185` deal-detail). Anything that goes around the CRM's React UI — including our inbox's stage dropdown — would silently write deals that violate the business contract.
+
+`src/lib/crm-stage-requirements.ts` mirrors the CRM frontend matrix so the inbox enforces the same rules. The matrix in scope today (after TBS Pre-sales / TBS RM / service manager / org-#117 paths were retired):
+
+| Rule | Trigger | Required | Conditional | UX |
+|---|---|---|---|---|
+| `DIVERSION_SAME_PIPELINE` | target = Diversion stage in same pipeline | — | always blocks | toast |
+| `LEAD_IN_FORWARD_PHONE_REQUIRED` | forward out of Lead In | `persons.phone` non-empty | skipped when category = Makeup | toast |
+| `QUALIFIED_ACTIVITIES_REQUIRED` | leaving Qualified forward or backward | 0 rows in `activities` with `done = 0` for the deal | — | toast |
+| `QUALIFIED_FORWARD_VALUE_REQUIRED` | forward out of Qualified | `deals.value > 0` | — | modal |
+| `CONTACT_MADE_OR_BEYOND_REQUIRES_VENUE_CITY` | target at-or-beyond Contact Made (by `stage_order`) | `deals.venue` AND `deals.city`; PLUS ≥1 row in `deal_labels` if category = Makeup | — | modal |
+| `FOLLOW_UP_REQUIRES_VALUE_VENUE` / `SKIP_FOLLOW_UP_REQUIRES_VALUE_VENUE` | target = Follow Up, or any later stage reached by skipping Follow Up forward | `deals.value > 0` AND `deals.venue`; PLUS ≥1 row in `deal_labels` if category = Makeup | — | modal |
+
+### Category = Makeup detection
+
+The frontend treats THREE signals as equivalent:
+- `pipelines.category` (free text)
+- `organizations.category` (free text, via `pipelines.organization_id`)
+- `categories.name` (resolved via `deals.category_id`)
+
+Any one of them equal to `"Makeup"` (case-insensitive, trimmed) makes the deal a Makeup deal. `crm-stage/route.ts` LEFT JOINs all three in one query and the helper checks them in `isMakeupCategory()`.
+
+### How the inbox surfaces missing info
+
+`PATCH /api/conversations/[id]/crm-stage` returns:
+
+```json
+{
+  "error": "Cannot move to Contact Made. Add venue, city.",
+  "rule": "CONTACT_MADE_OR_BEYOND_REQUIRES_VENUE_CITY",
+  "missing": ["venue", "city"],
+  "ux": "modal",
+  "target_stage_name": "Contact Made"
+}
+```
+
+DetailRail's `changeStage` handler reads `missing` + `ux`:
+- `ux === 'modal'` → opens `StageRequirementsModal` with one input per missing field. On submit it PATCHes `/crm-deal` then re-fires `changeStage` with the same target stage id.
+- `ux === 'toast'` → shows the message inline and stops. The operator is expected to fix the underlying issue in the CRM dashboard (phone for Lead In, activities for Qualified, Diversion-into-same-pipeline).
+
+### Known follow-ups
+
+- The CRM backend should grow a `validateStageTransitionRequirements` method on `DealServiceImpl.updateStage` so the rules become single-source-of-truth. Once that lands, `src/lib/crm-stage-requirements.ts` can be retired.
+- The inbox writes the deal via raw MySQL (`PATCH /api/conversations/[id]/crm-deal`). If/when the CRM exposes an HTTP API with a service-account JWT we wire into, those raw writes get replaced by `PATCH /api/deals/{id}` calls into the CRM's Java app.
+- Labels offered in the Makeup modal are hardcoded to Party Makeup (id 3) and Bridal Makeup (id 4) to match the CRM frontend's `VenueModal`. Keep them in sync if either side adds options.
 
