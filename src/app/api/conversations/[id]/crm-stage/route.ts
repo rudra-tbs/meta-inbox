@@ -7,6 +7,7 @@ import { createServerClient } from '@/lib/supabase';
 import { getUserByAuthId } from '@/lib/auth';
 import { queryCRM, insertCRM } from '@/lib/mysql-crm';
 import { logEvent } from '@/lib/activity';
+import { evaluateStageRequirements, type DealContext } from '@/lib/crm-stage-requirements';
 import * as Sentry from '@sentry/nextjs';
 
 // PATCH /api/conversations/[id]/crm-stage
@@ -16,9 +17,32 @@ import * as Sentry from '@sentry/nextjs';
 // update succeeds and Supabase fails, we still return 502 — but the
 // cron in /api/cron/sync-crm will reconcile within 5 minutes, so the
 // app catches up automatically.
+//
+// Before any of that, we evaluate the stage-transition requirements
+// matrix (src/lib/crm-stage-requirements.ts) against live CRM data.
+// Validation rules live entirely in the CRM frontend today; we mirror
+// them here so a stage move from DetailRail can't bypass guards the
+// CRM Dashboard enforces. When a rule fires we return 400 with
+// `missing` + `ux` so the inbox can either open the inline form
+// (ux=modal) or surface a toast and bounce (ux=toast).
 
-interface StageRow { id: number; name: string; pipeline_id: number }
-interface DealRow { pipeline_id: number | null }
+interface StageRow { id: number; name: string; pipeline_id: number; stage_order: number | null }
+interface PipelineStageRow { id: number; name: string; stage_order: number | null }
+interface DealCtxRow {
+  pipeline_id: number | null;
+  venue: string | null;
+  city: string | null;
+  value: string | null;            // mysql2 returns DECIMAL as string
+  category_id: number | null;
+  person_id: number | null;
+  current_stage_id: number | null;
+  current_stage_name: string | null;
+  current_stage_order: number | null;
+  pipeline_name: string | null;
+  pipeline_category: string | null;
+  org_category: string | null;
+  category_name: string | null;
+}
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   const cookieStore = cookies();
@@ -67,25 +91,57 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     });
   }
 
-  // Verify the requested stage exists and belongs to the deal's current
-  // pipeline. Without this the CRM would happily accept a stage_id from
-  // an unrelated pipeline, leaving the deal in an inconsistent state.
+  // Verify the requested stage exists, belongs to the deal's pipeline,
+  // AND that the deal satisfies the stage-transition requirements
+  // mirrored from the CRM frontend in lib/crm-stage-requirements.
   let newStageName: string;
+  let targetStageOrder: number;
+  let dealCtx: DealCtxRow;
+  let pipelineStages: PipelineStageRow[];
+  let hasAnyLabel: boolean;
+  let personPhone: string | null;
+  let openActivityCount: number;
   try {
     const stages = await queryCRM<StageRow[]>(
-      'SELECT id, name, pipeline_id FROM stages WHERE id = ? LIMIT 1',
+      'SELECT id, name, pipeline_id, stage_order FROM stages WHERE id = ? LIMIT 1',
       [stageId],
     );
     if (stages.length === 0) {
       return NextResponse.json({ error: 'Stage not found in CRM' }, { status: 404 });
     }
-    const deals = await queryCRM<DealRow[]>(
-      'SELECT pipeline_id FROM deals WHERE id = ? AND is_deleted = 0 LIMIT 1',
+    // One join query pulls every column the requirements helper needs:
+    // deal fields, pipeline metadata, organization category, deal category.
+    const dealRows = await queryCRM<DealCtxRow[]>(
+      `SELECT
+         d.pipeline_id,
+         d.venue,
+         d.city,
+         d.value,
+         d.category_id,
+         d.person_id,
+         d.stage_id AS current_stage_id,
+         s.name AS current_stage_name,
+         s.stage_order AS current_stage_order,
+         p.name AS pipeline_name,
+         p.category AS pipeline_category,
+         o.category AS org_category,
+         c.name AS category_name
+       FROM deals d
+       LEFT JOIN stages s ON s.id = d.stage_id
+       LEFT JOIN pipelines p ON p.id = d.pipeline_id
+       LEFT JOIN organizations o ON o.id = p.organization_id
+       LEFT JOIN categories c ON c.id = d.category_id
+       WHERE d.id = ? AND d.is_deleted = 0
+       LIMIT 1`,
       [conv.crm_deal_id],
     );
-    const dealPipeline = deals[0]?.pipeline_id;
+    if (dealRows.length === 0) {
+      return NextResponse.json({ error: 'Deal not found' }, { status: 404 });
+    }
+    dealCtx = dealRows[0];
+    const dealPipeline = dealCtx.pipeline_id;
     if (!dealPipeline) {
-      return NextResponse.json({ error: 'Deal not found or has no pipeline' }, { status: 404 });
+      return NextResponse.json({ error: 'Deal has no pipeline' }, { status: 404 });
     }
     if (dealPipeline !== stages[0].pipeline_id) {
       return NextResponse.json(
@@ -94,11 +150,100 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       );
     }
     newStageName = stages[0].name;
+    targetStageOrder = stages[0].stage_order ?? 0;
+
+    // Pipeline's stages, ordered. The requirements helper finds Contact
+    // Made / Follow Up / Lead In by name and compares stage_order to the
+    // target, so it needs the whole list.
+    pipelineStages = await queryCRM<PipelineStageRow[]>(
+      'SELECT id, name, stage_order FROM stages WHERE pipeline_id = ? ORDER BY stage_order, id',
+      [dealPipeline],
+    );
+
+    // ≥1 row in deal_labels means the deal has at least one label
+    // assigned (the M:N model the CRM uses today).
+    const labelRows = await queryCRM<Array<{ n: number }>>(
+      'SELECT COUNT(*) AS n FROM deal_labels WHERE deal_id = ?',
+      [conv.crm_deal_id],
+    );
+    hasAnyLabel = (labelRows[0]?.n ?? 0) > 0;
+
+    // Person phone — for the Lead-In gate.
+    if (dealCtx.person_id) {
+      const pRows = await queryCRM<Array<{ phone: string | null }>>(
+        'SELECT phone FROM persons WHERE id = ? AND is_deleted = 0 LIMIT 1',
+        [dealCtx.person_id],
+      );
+      personPhone = pRows[0]?.phone ?? null;
+    } else {
+      personPhone = null;
+    }
+
+    // Activities — bit(1) `done` is the CRM's completed flag (see
+    // entity Activity). Count anything not done to drive the gate.
+    const aRows = await queryCRM<Array<{ n: number }>>(
+      'SELECT COUNT(*) AS n FROM activities WHERE deal_id = ? AND done = 0',
+      [conv.crm_deal_id],
+    );
+    openActivityCount = aRows[0]?.n ?? 0;
   } catch (err) {
     Sentry.captureException(err, { tags: { component: 'crm-stage-update', step: 'verify' } });
     return NextResponse.json(
       { error: 'CRM verification failed', details: err instanceof Error ? err.message : String(err) },
       { status: 502 },
+    );
+  }
+
+  // Build the validation context and run the matrix. If any rule fires
+  // we return 400 with a structured `missing` array so the UI can open
+  // the right modal (for 'modal' UX) or display a toast (for 'toast' UX).
+  const ctx: DealContext = {
+    deal: {
+      id: conv.crm_deal_id,
+      venue: dealCtx.venue,
+      city: dealCtx.city,
+      value: dealCtx.value != null ? Number(dealCtx.value) : null,
+      pipeline_id: dealCtx.pipeline_id,
+    },
+    pipeline: dealCtx.pipeline_id
+      ? {
+          id: dealCtx.pipeline_id,
+          name: dealCtx.pipeline_name ?? `#${dealCtx.pipeline_id}`,
+          category: dealCtx.pipeline_category,
+        }
+      : null,
+    organization_category: dealCtx.org_category,
+    category_name: dealCtx.category_name,
+    has_any_label: hasAnyLabel,
+    person_phone: personPhone,
+    open_activity_count: openActivityCount,
+    current_stage: {
+      id: dealCtx.current_stage_id ?? 0,
+      name: dealCtx.current_stage_name ?? '',
+      stage_order: dealCtx.current_stage_order ?? 0,
+    },
+    target_stage: {
+      id: stageId,
+      name: newStageName,
+      stage_order: targetStageOrder,
+    },
+    pipeline_stages: pipelineStages.map((s) => ({
+      id: s.id,
+      name: s.name,
+      stage_order: s.stage_order ?? 0,
+    })),
+  };
+  const verdict = evaluateStageRequirements(ctx);
+  if (!verdict.ok) {
+    return NextResponse.json(
+      {
+        error: verdict.message,
+        rule: verdict.rule,
+        missing: verdict.missing,
+        ux: verdict.ux,
+        target_stage_name: newStageName,
+      },
+      { status: 400 },
     );
   }
 

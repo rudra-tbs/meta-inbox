@@ -71,6 +71,16 @@ export default function DetailRail({ conversation, open, onClose, onConversation
   const [stages, setStages] = useState<Array<{ id: number; name: string }> | null>(null);
   const [updatingStage, setUpdatingStage] = useState(false);
   const [stageError, setStageError] = useState<string | null>(null);
+  // When the server returns a 400 with `missing` + `ux=modal`, we surface
+  // a "missing info" form to the operator. Once filled and submitted we
+  // PATCH /crm-deal then retry the stage change with the same target id.
+  type MissingField = 'venue' | 'city' | 'value' | 'label';
+  const [stageGate, setStageGate] = useState<null | {
+    targetStageId: number;
+    targetStageName: string;
+    missing: MissingField[];
+    message: string;
+  }>(null);
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load tag taxonomy once when the rail opens. Cheap query (~tens of rows
@@ -194,9 +204,24 @@ export default function DetailRail({ conversation, open, onClose, onConversation
       });
       const data = await res.json();
       if (!res.ok) {
-        // Roll back optimistic update.
+        // Roll back optimistic update first — whichever path we take next.
         onConversationUpdate({ ...conversation, crm_stage_id: prevId, crm_stage_name: prevName });
-        setStageError(data?.error ?? 'Could not update stage');
+        // 400 + ux=modal → open the missing-info form so the operator
+        // can fill it inline. Anything else (toast UX, generic errors)
+        // → surface the error inline and stop.
+        if (res.status === 400 && data?.ux === 'modal' && Array.isArray(data?.missing) && data.missing.length > 0) {
+          const targetName = data.target_stage_name
+            ?? stages?.find((s) => s.id === stageId)?.name
+            ?? '';
+          setStageGate({
+            targetStageId: stageId,
+            targetStageName: targetName,
+            missing: data.missing.filter((m: string): m is MissingField => ['venue', 'city', 'value', 'label'].includes(m)),
+            message: data.error ?? 'Add the missing info to continue.',
+          });
+        } else {
+          setStageError(data?.error ?? 'Could not update stage');
+        }
         return;
       }
       onConversationUpdate({
@@ -210,6 +235,38 @@ export default function DetailRail({ conversation, open, onClose, onConversation
     } finally {
       setUpdatingStage(false);
     }
+  }
+
+  // Called when the StageRequirementsModal submits. Writes the deal
+  // fields via PATCH /crm-deal, then retries the stage change. Done
+  // here (rather than inside the modal) so the modal stays
+  // presentation-only and the retry logic stays next to changeStage.
+  async function submitStageGate(values: { venue?: string; city?: string; value?: number; label_ids?: number[] }): Promise<string | null> {
+    if (!stageGate) return null;
+    const dealPatchBody: Record<string, unknown> = {};
+    if (values.venue !== undefined) dealPatchBody.venue = values.venue;
+    if (values.city !== undefined) dealPatchBody.city = values.city;
+    if (values.value !== undefined) dealPatchBody.value = values.value;
+    if (values.label_ids !== undefined) dealPatchBody.label_ids = values.label_ids;
+    if (Object.keys(dealPatchBody).length === 0) return 'No fields to save.';
+    try {
+      const dealRes = await fetch(`/api/conversations/${conversation.id}/crm-deal`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dealPatchBody),
+      });
+      if (!dealRes.ok) {
+        const data = await dealRes.json().catch(() => ({}));
+        return data?.error ?? 'Could not save deal fields.';
+      }
+    } catch {
+      return 'Network error while saving deal fields.';
+    }
+    // Now retry the stage change.
+    const stageId = stageGate.targetStageId;
+    setStageGate(null);
+    await changeStage(stageId);
+    return null;
   }
 
   if (!open) return null;
@@ -398,6 +455,177 @@ export default function DetailRail({ conversation, open, onClose, onConversation
         )}
       </Section>
       </aside>
+      {stageGate && (
+        <StageRequirementsModal
+          targetStageName={stageGate.targetStageName}
+          missing={stageGate.missing}
+          message={stageGate.message}
+          onCancel={() => setStageGate(null)}
+          onSubmit={submitStageGate}
+        />
+      )}
     </>
+  );
+}
+
+// Labels offered when the operator needs to add one because the deal is
+// a Makeup category. These match the CRM frontend's VenueModal
+// hardcoded list (Party Makeup = id 3, Bridal Makeup = id 4 in the
+// labels table). If the CRM adds more categories that gate on label,
+// extend this and the helper in lib/crm-stage-requirements.ts together.
+const MAKEUP_LABEL_OPTIONS: Array<{ id: number; name: string }> = [
+  { id: 3, name: 'Party Makeup' },
+  { id: 4, name: 'Bridal Makeup' },
+];
+
+function StageRequirementsModal({
+  targetStageName,
+  missing,
+  message,
+  onCancel,
+  onSubmit,
+}: {
+  targetStageName: string;
+  missing: Array<'venue' | 'city' | 'value' | 'label'>;
+  message: string;
+  onCancel: () => void;
+  onSubmit: (values: { venue?: string; city?: string; value?: number; label_ids?: number[] }) => Promise<string | null>;
+}) {
+  const needsVenue = missing.includes('venue');
+  const needsCity = missing.includes('city');
+  const needsValue = missing.includes('value');
+  const needsLabel = missing.includes('label');
+
+  const [venue, setVenue] = useState('');
+  const [city, setCity] = useState('');
+  const [value, setValue] = useState('');
+  const [labelId, setLabelId] = useState<number | ''>('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    // Per-field validation before we round-trip.
+    if (needsVenue && !venue.trim()) { setError('Venue is required'); return; }
+    if (needsCity && !city.trim()) { setError('City is required'); return; }
+    if (needsValue) {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n <= 0) { setError('Deal value must be a positive number'); return; }
+    }
+    if (needsLabel && !labelId) { setError('Label is required'); return; }
+    setBusy(true);
+    const payload: { venue?: string; city?: string; value?: number; label_ids?: number[] } = {};
+    if (needsVenue) payload.venue = venue.trim();
+    if (needsCity) payload.city = city.trim();
+    if (needsValue) payload.value = Number(value);
+    if (needsLabel && labelId) payload.label_ids = [labelId];
+    const err = await onSubmit(payload);
+    setBusy(false);
+    if (err) setError(err);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]"
+      onClick={onCancel}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-elevated rounded-xl shadow-xl w-full max-w-md border border-border-default"
+      >
+        <div className="px-5 py-4 border-b border-border-default">
+          <h2 className="text-base font-semibold text-text-primary">
+            Add missing info
+          </h2>
+          <p className="text-[12px] text-text-secondary mt-1">
+            {message}{targetStageName ? ` Required to move to ${targetStageName}.` : ''}
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3">
+          {needsVenue && (
+            <div>
+              <label className="block text-[11px] font-medium text-text-secondary mb-1">Venue</label>
+              <input
+                value={venue}
+                onChange={(e) => setVenue(e.target.value)}
+                placeholder="e.g. ITC Maurya, Delhi"
+                disabled={busy}
+                className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default focus:outline-none focus:border-border-strong"
+                autoFocus
+              />
+            </div>
+          )}
+          {needsCity && (
+            <div>
+              <label className="block text-[11px] font-medium text-text-secondary mb-1">City</label>
+              <input
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="e.g. Delhi"
+                disabled={busy}
+                className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default focus:outline-none focus:border-border-strong"
+              />
+            </div>
+          )}
+          {needsValue && (
+            <div>
+              <label className="block text-[11px] font-medium text-text-secondary mb-1">Deal value (₹)</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder="e.g. 500000"
+                disabled={busy}
+                className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default focus:outline-none focus:border-border-strong"
+              />
+            </div>
+          )}
+          {needsLabel && (
+            <div>
+              <label className="block text-[11px] font-medium text-text-secondary mb-1">Label</label>
+              <select
+                value={labelId}
+                onChange={(e) => setLabelId(e.target.value ? Number(e.target.value) : '')}
+                disabled={busy}
+                className="w-full text-sm border border-border-default rounded-md px-3 py-2 bg-elevated text-text-default focus:outline-none focus:border-border-strong"
+              >
+                <option value="">— Select —</option>
+                {MAKEUP_LABEL_OPTIONS.map((o) => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-danger-soft border border-danger/20 text-danger text-xs px-3 py-2 rounded-md">
+              {error}
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={busy}
+              className="text-xs text-text-secondary hover:text-text-default px-3 py-2"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={busy}
+              className="text-xs bg-brand text-text-inverse rounded-md px-3 py-2 font-medium disabled:opacity-50 hover:opacity-90"
+            >
+              {busy ? 'Saving…' : 'Save & move'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
