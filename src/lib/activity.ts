@@ -11,7 +11,9 @@ export type EventType =
   | 'NOTE_UPDATED'
   | 'ABSTAIN'
   | 'CALLBACK_DETECTED'
-  | 'CONTACT_MERGED';
+  | 'CONTACT_MERGED'
+  | 'CRM_STAGE_CHANGED'
+  | 'CRM_DEAL_DELETED';
 
 export async function logEvent(
   supabase: SupabaseClient,
