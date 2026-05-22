@@ -1,6 +1,8 @@
 export const dynamic = 'force-dynamic';
-// CRM stage data is fetched per-deal; 30 s is plenty for a few thousand rows.
-export const maxDuration = 30;
+// Stays under the Hobby 10s cap. For the workloads this sees today
+// (low hundreds of pushed conversations max) the batched MySQL SELECT
+// returns in <2s. If we cross the 10s budget, upgrade to Pro and
+// re-add `export const maxDuration = 30;`.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';

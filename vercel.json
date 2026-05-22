@@ -1,5 +1,4 @@
 {
-  "$comment": "Hobby tier rejects sub-daily schedules; the once-a-day entry below keeps Vercel happy and acts as a safety-net backup. The actual 5-minute sync runs from .github/workflows/sync-crm.yml. If you upgrade to Pro, change the schedule to '*/5 * * * *' and the GitHub Actions workflow becomes redundant.",
   "crons": [
     {
       "path": "/api/cron/sync-crm",
