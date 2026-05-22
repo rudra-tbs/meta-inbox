@@ -220,77 +220,94 @@ export async function POST(
     console.warn('[Push CRM] Could not resolve creator CRM user:', err);
   }
 
-  // Sub-source by channel
+  // Sub-source by channel. Note: persons.sub_source AND deals.deal_sub_source
+  // both use the same enum {INSTAGRAM, WHATSAPP, LANDING_PAGE, EMAIL} in the
+  // CRM schema, so this string serves both inserts.
   const deal_sub_source = conv.channel === 'IG' ? 'INSTAGRAM' : 'WHATSAPP';
+  const isIG = conv.channel === 'IG';
 
-  // phone_num: strip leading country code if 91XXXXXXXXXX (12 digits → last 10)
+  // phone_num: strip leading country code if 91XXXXXXXXXX (12 digits → last 10).
+  // For IG conversations the phone_number column actually holds the IG-scoped
+  // sender id, not a real phone, so we don't pretend it's one.
   const rawPhone = conv.phone_number as string;
   const phone_num = rawPhone.length === 12 && rawPhone.startsWith('91')
     ? rawPhone.slice(2)
     : rawPhone;
+  const dealContactNumber = isIG ? '' : rawPhone.slice(0, 20);
+  const personPhone = isIG ? null : rawPhone;
+  const personPhoneNum = isIG ? null : phone_num;
 
-  // 1. Insert/upsert person — wrapped so a CRM outage rolls back the lock
-  //    instead of leaving the conversation flagged in-flight forever.
-  try {
-    await insertCRM(
-      `INSERT INTO persons
-         (name, phone, phone_num, wedding_city, city, wedding_date, instagram_id,
-          person_source, sub_source, lead_date, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'DIRECT', ?, CURDATE(), NOW(), NOW())
-       ON DUPLICATE KEY UPDATE
-         name=VALUES(name), wedding_city=VALUES(wedding_city),
-         updated_at=NOW(), id=LAST_INSERT_ID(id)`,
-      [
-        body.client_name,
-        rawPhone,
-        phone_num,
-        body.city ?? null,
-        body.city ?? null,
-        body.wedding_date ?? null,
-        conv.instagram_id ?? null,
-        deal_sub_source,
-      ]
-    );
-  } catch (err) {
-    await releaseLock();
-    console.error('[Push CRM] person insert failed:', err);
-    Sentry.captureException(err, {
-      tags: { component: 'push-to-crm', step: 'person_insert', brand: conv.brand },
-      extra: { conversation_id: params.id },
-    });
-    return NextResponse.json(
-      { error: 'CRM person insert failed', step: 'person_insert', details: err instanceof Error ? err.message : String(err) },
-      { status: 502 }
-    );
-  }
-
-  // Get person_id (works for both insert and duplicate-key update cases).
-  // If this comes back empty the deal would land with person_id=null and
-  // an effectively broken FK in CRM, so we hard-fail and roll back.
+  // 1a. Find existing CRM person. Phone is NOT unique in the CRM schema, so
+  //     ON DUPLICATE KEY UPDATE silently never fires there — we'd create
+  //     duplicate persons forever. Explicit SELECT-first dedup matches the
+  //     "if pre-exists, reuse; else create" contract.
   let person_id: number | null = null;
-  try {
-    const personIdRows = await queryCRM<{ id: number }[]>(
-      'SELECT id FROM persons WHERE phone = ? LIMIT 1',
-      [rawPhone]
-    );
-    person_id = personIdRows[0]?.id ?? null;
-  } catch (err) {
-    await releaseLock();
-    console.error('[Push CRM] person lookup failed:', err);
-    Sentry.captureException(err, {
-      tags: { component: 'push-to-crm', step: 'person_lookup', brand: conv.brand },
-      extra: { conversation_id: params.id },
-    });
-    return NextResponse.json(
-      { error: 'CRM person lookup failed', step: 'person_lookup', details: err instanceof Error ? err.message : String(err) },
-      { status: 502 }
-    );
+  const dedupColumn = isIG ? 'instagram_id' : 'phone';
+  const dedupValue: string | null = isIG ? (conv.instagram_id ?? null) : rawPhone;
+
+  if (dedupValue) {
+    try {
+      const found = await queryCRM<Array<{ id: number }>>(
+        `SELECT id FROM persons WHERE ${dedupColumn} = ? AND is_deleted = 0 ORDER BY id DESC LIMIT 1`,
+        [dedupValue]
+      );
+      if (found[0]?.id) person_id = found[0].id;
+    } catch (err) {
+      await releaseLock();
+      console.error('[Push CRM] person lookup failed:', err);
+      Sentry.captureException(err, {
+        tags: { component: 'push-to-crm', step: 'person_lookup', brand: conv.brand },
+        extra: { conversation_id: params.id },
+      });
+      return NextResponse.json(
+        { error: 'CRM person lookup failed', step: 'person_lookup', details: err instanceof Error ? err.message : String(err) },
+        { status: 502 }
+      );
+    }
   }
+
+  // 1b. No existing person → insert one. Field set matches the actual
+  //     thebrideside.persons schema (NOT_NULL: name, is_deleted; rest
+  //     nullable). person_source is intentionally not sent — its enum
+  //     doesn't include 'DIRECT' and real production rows leave it null.
+  if (!person_id) {
+    try {
+      const result = await insertCRM(
+        `INSERT INTO persons (
+           name, phone, phone_num, wedding_city, city, wedding_date,
+           instagram_id, sub_source, lead_date, is_deleted, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), b'0', NOW(), NOW())`,
+        [
+          body.client_name,
+          personPhone,
+          personPhoneNum,
+          body.city ?? null,
+          body.city ?? null,
+          body.wedding_date ?? null,
+          conv.instagram_id ?? null,
+          deal_sub_source,
+        ]
+      );
+      person_id = result.insertId;
+    } catch (err) {
+      await releaseLock();
+      console.error('[Push CRM] person insert failed:', err);
+      Sentry.captureException(err, {
+        tags: { component: 'push-to-crm', step: 'person_insert', brand: conv.brand },
+        extra: { conversation_id: params.id },
+      });
+      return NextResponse.json(
+        { error: 'CRM person insert failed', step: 'person_insert', details: err instanceof Error ? err.message : String(err) },
+        { status: 502 }
+      );
+    }
+  }
+
   if (!person_id) {
     await releaseLock();
-    console.error('[Push CRM] person inserted but id not returned (phone=' + rawPhone + ')');
+    console.error('[Push CRM] could not resolve person_id (dedup+insert both yielded nothing)');
     return NextResponse.json(
-      { error: 'Could not resolve person_id after insert', step: 'person_lookup' },
+      { error: 'Could not resolve person_id', step: 'person_lookup' },
       { status: 502 }
     );
   }
@@ -299,17 +316,38 @@ export async function POST(
   // tbs_service_type / interested_in_planning / interested_in_decor) used to
   // be written here; they were dropped when brands became pipeline-driven.
   // Planners fill in pipeline-specific fields from the CRM after handoff.
+  // Schema-aligned deal INSERT. Five things that the previous version got
+  // wrong against the actual thebrideside.deals schema:
+  //   1. contact_number (varchar(20) NOT NULL) — was missing.
+  //   2. value         (decimal(12,2) NOT NULL) — was missing. CRM convention
+  //      is 0.00 for unbooked leads; planners fill the real value during
+  //      negotiation.
+  //   3. status        — used to send 'ACTIVE' which isn't in the enum
+  //      {WON, LOST, IN_PROGRESS}. New leads → 'IN_PROGRESS'.
+  //   4. created_by    — enum {USER, BOT}; previously we accidentally pushed
+  //      the numeric CRM user id into this column. The user id goes into
+  //      created_by_user_id, which is correct here.
+  //   5. deal_owner_override (bit(1) NOT NULL, no default) — was missing.
   let crmDealId: number;
   try {
     const dealResult = await insertCRM(
-      `INSERT INTO deals
-         (name, phone_number, person_name, city, event_date, expected_gathering,
-          client_budget, budget, pipeline_id, stage_id, status, deal_source,
-          deal_sub_source, created_by, created_by_name, created_by_user_id,
-          notes, person_id, owner_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 'DIRECT', ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      `INSERT INTO deals (
+         name, contact_number, phone_number, person_name, city, event_date,
+         expected_gathering, client_budget, budget, value,
+         pipeline_id, stage_id, status,
+         deal_source, deal_sub_source,
+         created_by, created_by_name, created_by_user_id,
+         notes, person_id, owner_id, deal_owner_override,
+         created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
+                 ?, ?, 'IN_PROGRESS',
+                 'DIRECT', ?,
+                 'USER', ?, ?,
+                 ?, ?, ?, b'0',
+                 NOW(), NOW())`,
       [
         body.client_name,                  // name
+        dealContactNumber,                 // contact_number (NOT NULL; '' for IG)
         rawPhone,                          // phone_number
         body.client_name,                  // person_name
         body.city ?? null,                 // city
@@ -317,15 +355,19 @@ export async function POST(
         body.guest_count ?? null,          // expected_gathering
         body.budget ?? null,               // client_budget
         body.budget ?? null,               // budget
+        // value = 0 literal
         pipeline_id,
         stage_id,
-        deal_sub_source,
-        createdByCRMId,                    // created_by
+        // status = 'IN_PROGRESS' literal
+        // deal_source = 'DIRECT' literal
+        deal_sub_source,                   // deal_sub_source
+        // created_by = 'USER' literal (enum, not the user id)
         createdByName,                     // created_by_name
         createdByCRMId,                    // created_by_user_id
-        body.notes ?? null,
-        person_id,
+        body.notes ?? null,                // notes
+        person_id,                         // person_id
         body.assign_to_crm_user_id ?? createdByCRMId,  // owner_id
+        // deal_owner_override = b'0' literal
       ]
     );
     crmDealId = dealResult.insertId;
