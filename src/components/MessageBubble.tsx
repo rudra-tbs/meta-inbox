@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { Message } from '@/types';
+import { toast } from '@/lib/toast';
 
 interface MessageBubbleProps {
   message: Message;
@@ -52,11 +53,13 @@ function ReadStatus({ message }: { message: Message }) {
   return <span className="text-text-disabled" title="Sending">⋯</span>;
 }
 
-function FailedFooter({ message, onRetry }: { message: Message; onRetry?: () => void }) {
+// Shared retry handler used by both the inline Retry button and the
+// click-the-bubble-to-retry affordance.
+function useRetry(message: Message, onRetry?: () => void) {
   const [retrying, setRetrying] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  async function handleRetry() {
+  async function run() {
     if (retrying) return;
     setRetrying(true);
     setLocalError(null);
@@ -64,16 +67,27 @@ function FailedFooter({ message, onRetry }: { message: Message; onRetry?: () => 
       const res = await fetch(`/api/messages/${message.id}/retry`, { method: 'POST' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setLocalError(data?.details ?? data?.error ?? 'Retry failed');
+        const msg = data?.details ?? data?.error ?? 'Retry failed';
+        setLocalError(msg);
+        toast.error('Retry failed', { description: msg });
+      } else {
+        toast.success('Message resent');
       }
       onRetry?.();
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Retry failed');
+      const msg = err instanceof Error ? err.message : 'Retry failed';
+      setLocalError(msg);
+      toast.error('Retry failed', { description: msg });
     } finally {
       setRetrying(false);
     }
   }
 
+  return { retrying, localError, run };
+}
+
+function FailedFooter({ message, onRetry }: { message: Message; onRetry?: () => void }) {
+  const { retrying, localError, run } = useRetry(message, onRetry);
   return (
     <div className="mt-1 mr-1 flex items-center justify-end gap-2 text-[11px]">
       <span className="text-danger font-medium" title={message.send_error ?? undefined}>
@@ -81,12 +95,45 @@ function FailedFooter({ message, onRetry }: { message: Message; onRetry?: () => 
       </span>
       <button
         type="button"
-        onClick={handleRetry}
+        onClick={run}
         disabled={retrying}
         className="text-brand hover:text-brand-hover font-medium underline-offset-2 hover:underline disabled:opacity-50"
       >
         {retrying ? 'Retrying…' : 'Retry'}
       </button>
+    </div>
+  );
+}
+
+// Wraps a failed outbound bubble so the whole thing is one tap target.
+// Hover shows the underlying Meta error via `title`. Keyboard-accessible.
+function FailedBubbleClickable({
+  message,
+  onRetry,
+  children,
+}: {
+  message: Message;
+  onRetry?: () => void;
+  children: React.ReactNode;
+}) {
+  const { retrying, run } = useRetry(message, onRetry);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      title={message.send_error ?? 'Tap to retry'}
+      onClick={(e) => { e.preventDefault(); run(); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          run();
+        }
+      }}
+      aria-busy={retrying}
+      aria-label="Failed message — tap to retry"
+      className="cursor-pointer focus:outline-none focus:ring-2 focus:ring-danger/40 rounded-lg"
+    >
+      {children}
     </div>
   );
 }
@@ -114,14 +161,19 @@ export default function MessageBubble({ message, contactName, showChannel, onRet
   }
 
   if (message.sender === 'AI') {
+    const bubble = (
+      <div className={`bg-muted rounded-lg rounded-tr-sm px-3 py-2 ${isFailed ? 'ring-1 ring-danger/40' : ''}`}>
+        <p className="text-[14px] text-text-primary whitespace-pre-wrap break-words leading-relaxed">
+          {message.content}
+        </p>
+      </div>
+    );
     return (
       <div className="flex justify-end mb-2">
         <div className="max-w-[70%]">
-          <div className={`bg-muted rounded-lg rounded-tr-sm px-3 py-2 ${isFailed ? 'ring-1 ring-danger/40' : ''}`}>
-            <p className="text-[14px] text-text-primary whitespace-pre-wrap break-words leading-relaxed">
-              {message.content}
-            </p>
-          </div>
+          {isFailed
+            ? <FailedBubbleClickable message={message} onRetry={onRetry}>{bubble}</FailedBubbleClickable>
+            : bubble}
           <p className="text-[11px] text-text-muted mt-1 mr-1 text-right inline-flex items-center gap-1 w-full justify-end">
             {showChannel && <ChannelTag channel={message.channel} />}
             <span className="text-text-secondary">✨</span>
@@ -134,14 +186,19 @@ export default function MessageBubble({ message, contactName, showChannel, onRet
     );
   }
 
+  const humanBubble = (
+    <div className={`bg-brand-tint shadow-sm rounded-lg rounded-tr-sm px-3 py-2 ${isFailed ? 'ring-1 ring-danger/40' : ''}`}>
+      <p className="text-[14px] text-text-primary whitespace-pre-wrap break-words leading-relaxed">
+        {message.content}
+      </p>
+    </div>
+  );
   return (
     <div className="flex justify-end mb-2">
       <div className="max-w-[70%]">
-        <div className={`bg-brand-tint shadow-sm rounded-lg rounded-tr-sm px-3 py-2 ${isFailed ? 'ring-1 ring-danger/40' : ''}`}>
-          <p className="text-[14px] text-text-primary whitespace-pre-wrap break-words leading-relaxed">
-            {message.content}
-          </p>
-        </div>
+        {isFailed
+          ? <FailedBubbleClickable message={message} onRetry={onRetry}>{humanBubble}</FailedBubbleClickable>
+          : humanBubble}
         <p className="text-[11px] text-text-muted mt-1 mr-1 text-right inline-flex items-center gap-1 w-full justify-end">
           {showChannel && <ChannelTag channel={message.channel} />}
           <span>{message.sender_name || 'Agent'} · {formatTime(message.created_at)}</span>
