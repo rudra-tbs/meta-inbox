@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Button from '@/components/ui/Button';
+import { useFocusTrap } from '@/lib/use-focus-trap';
 
 interface BrandChannelRow {
   id: string;
@@ -294,6 +295,9 @@ function ConnectChannelModal({
   // Live env-var status — null = not checked yet, true/false = result.
   const [envStatus, setEnvStatus] = useState<{ key: string; set: boolean } | null>(null);
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, { onEscape: onClose });
+
   const brands = state?.brands ?? [];
   const conflict = brand && existingRows.some((r) => r.brand === brand && r.channel === channel);
   const selectedBrandName = brand ? brands.find((b) => b.id === brand)?.name ?? '' : '';
@@ -355,14 +359,23 @@ function ConnectChannelModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={onClose}>
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+      onClick={onClose}
+      role="presentation"
+    >
       <div
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
-        className="bg-elevated rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col border border-border-default"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="connect-channel-title"
+        tabIndex={-1}
+        className="bg-elevated rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col border border-border-default focus:outline-none"
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border-default">
-          <h2 className="text-base font-semibold text-text-primary">Connect channel</h2>
-          <button onClick={onClose} className="text-text-muted hover:text-text-primary text-xl leading-none" aria-label="Close">×</button>
+          <h2 id="connect-channel-title" className="text-base font-semibold text-text-primary">Connect channel</h2>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary text-xl leading-none" aria-label="Close dialog">×</button>
         </div>
 
         <form onSubmit={submit} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">

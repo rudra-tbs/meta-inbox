@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Conversation, ConversationEvent } from '@/types';
 import Dot from './ui/Dot';
 import { toast } from '@/lib/toast';
+import { useFocusTrap } from '@/lib/use-focus-trap';
 
 interface DetailRailProps {
   conversation: Conversation;
@@ -768,6 +769,9 @@ function StageRequirementsModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, { onEscape: onCancel });
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -794,13 +798,19 @@ function StageRequirementsModal({
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]"
       onClick={onCancel}
+      role="presentation"
     >
       <div
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
-        className="bg-elevated rounded-xl shadow-xl w-full max-w-md border border-border-default"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="stage-requirements-title"
+        tabIndex={-1}
+        className="bg-elevated rounded-xl shadow-xl w-full max-w-md border border-border-default focus:outline-none"
       >
         <div className="px-5 py-4 border-b border-border-default">
-          <h2 className="text-base font-semibold text-text-primary">
+          <h2 id="stage-requirements-title" className="text-base font-semibold text-text-primary">
             Add missing info
           </h2>
           <p className="text-[12px] text-text-secondary mt-1">

@@ -151,7 +151,9 @@ export default function SystemTab() {
             {recentFailures.map((f) => (
               <a
                 key={f.id}
-                href={`/inbox#${f.conversation_id}`}
+                href={`/inbox?conv=${f.conversation_id}`}
+                target="_blank"
+                rel="noreferrer"
                 className="block px-4 py-2.5 hover:bg-canvas transition-colors"
               >
                 <div className="flex items-baseline justify-between gap-3 flex-wrap">
