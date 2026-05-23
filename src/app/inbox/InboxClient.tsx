@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { MessageSquare, RefreshCw } from 'lucide-react';
 import type { AppUser, Conversation, Message, ChannelView } from '@/types';
 import { getSupabaseBrowser } from '@/lib/supabase';
 import BrandRail from '@/components/BrandRail';
@@ -736,9 +737,10 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
                 onClick={refreshStagesFromCRM}
                 disabled={refreshingStages}
                 title="Refresh stages from CRM"
-                className="text-[11px] text-text-secondary hover:text-brand px-1.5 py-1 disabled:opacity-50"
+                aria-label="Refresh stages from CRM"
+                className="inline-flex items-center justify-center text-text-secondary hover:text-brand px-1.5 py-1 disabled:opacity-50"
               >
-                {refreshingStages ? '...' : '↻'}
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshingStages ? 'animate-spin' : ''}`} aria-hidden />
               </button>
             </div>
             {isAdmin && (
@@ -799,9 +801,7 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
           <div className="flex-1 flex items-center justify-center px-6">
             <div className="text-center max-w-sm">
               <div className="w-14 h-14 rounded-2xl bg-elevated border border-border-default shadow-sm flex items-center justify-center mx-auto mb-4" aria-hidden>
-                <svg className="w-7 h-7 text-text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                </svg>
+                <MessageSquare className="w-7 h-7 text-text-secondary" strokeWidth={1.6} />
               </div>
               <p className="text-sm font-medium text-text-primary">Pick a thread to dive in</p>
               <p className="text-[12px] text-text-secondary mt-1 leading-snug">

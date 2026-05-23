@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { Pencil, Sparkles } from 'lucide-react';
 import type { Conversation, ConversationEvent } from '@/types';
 import Dot from './ui/Dot';
 import { toast } from '@/lib/toast';
@@ -140,9 +141,10 @@ function EditableRow({
         <span className={`text-xs ${value ? 'text-text-default font-medium' : 'text-text-disabled italic'}`}>
           {value || (placeholder ?? '—')}
         </span>
-        <span className="text-text-muted opacity-0 group-hover:opacity-100 transition-opacity text-[10px]" aria-hidden>
-          ✎
-        </span>
+        <Pencil
+          className="w-3 h-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity"
+          aria-hidden
+        />
       </span>
     </div>
   );
@@ -155,10 +157,10 @@ function ActivityAvatar({ name, isSystem }: { name: string; isSystem?: boolean }
   if (isSystem) {
     return (
       <span
-        className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] flex-shrink-0 bg-elevated border border-border-default text-text-secondary"
+        className="inline-flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 bg-brand-soft border border-border-default text-brand"
         aria-hidden
       >
-        ✨
+        <Sparkles className="w-3 h-3" />
       </span>
     );
   }

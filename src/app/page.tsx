@@ -1,4 +1,28 @@
 import Link from 'next/link';
+import {
+  ArrowRight,
+  Ban,
+  Bell,
+  Calendar,
+  Check,
+  CheckCheck,
+  Database,
+  FileText,
+  Flame,
+  History,
+  MapPin,
+  MoonStar,
+  Settings2,
+  Smartphone,
+  Sparkles,
+  Tag,
+  User as UserIcon,
+  Users,
+  Wallet,
+  X,
+  Zap,
+} from 'lucide-react';
+import type { ComponentType, SVGProps } from 'react';
 import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -73,24 +97,6 @@ export default async function LandingPage() {
           'Audit-logged with who pushed, when, and which deal ID came back',
         ]}
         visual={<PushToCRMMockup />}
-        reverse
-      />
-      <Spotlight
-        eyebrow="Admin controls"
-        title="Every brand-level setting lives in one place."
-        body="Configure channels, map pipelines, set default modes, pick brand colors, manage the tag taxonomy, edit per-brand AI prompts, invite teammates — all from the admin panel. The System tab even probes for missing database migrations."
-        bullets={[
-          'Invite-only admins; agents self-signup with email + password',
-          'Tag taxonomy prevents #vip / #VIP / #Vip drift — canonical normalization on save',
-          'Activity tab shows every admin action with full audit trail',
-        ]}
-        visual={<AdminPanelMockup />}
-      />
-      <Spotlight
-        eyebrow="Activity log"
-        title="Every change is recorded against the conversation."
-        body="Mode toggles, assignments, snoozes, callbacks, CRM pushes — all timestamped against the conversation timeline. If something went sideways three weeks ago, the timeline tells you who did what and when."
-        visual={<ActivityTimelineMockup />}
         reverse
       />
       <SmallerFeatures />
@@ -169,7 +175,7 @@ function Hero() {
                 className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold bg-brand text-text-inverse hover:bg-brand-hover transition-colors shadow-sm"
               >
                 Create your account
-                <Arrow className="w-3.5 h-3.5" />
+                <ArrowRight className="w-3.5 h-3.5" aria-hidden />
               </Link>
               <Link
                 href="/login"
@@ -218,7 +224,7 @@ function InboxMockup() {
             <MockConvRow name="Vidya Iyer" preview="₹50L is our hard upper limit." time="1d" />
           </div>
 
-          <div className="flex-1 flex flex-col bg-warm">
+          <div className="flex-1 flex flex-col bg-warm chat-pattern">
             <div className="px-3 py-2 border-b border-border-default bg-elevated">
               <div className="flex items-center justify-between">
                 <div>
@@ -312,7 +318,7 @@ function Spotlight({
               <ul className="mt-6 space-y-2.5">
                 {bullets.map((b) => (
                   <li key={b} className="flex items-start gap-2.5 text-sm text-text-default">
-                    <CheckIcon className="w-4 h-4 text-brand mt-0.5 flex-shrink-0" />
+                    <Check className="w-4 h-4 text-brand mt-0.5 flex-shrink-0" strokeWidth={2.5} aria-hidden />
                     <span>{b}</span>
                   </li>
                 ))}
@@ -334,7 +340,7 @@ function HinglishChatMockup() {
   return (
     <FloatingCard>
       <BrowserChrome compact />
-      <div className="bg-warm p-4 space-y-2 min-h-[440px]">
+      <div className="bg-warm chat-pattern p-4 space-y-2 min-h-[440px]">
         <ChatLeft>Hi, mujhe apni shaadi plan karwani hai</ChatLeft>
         <ChatRight ai>Hi! Bahut khushi hui aapka message dekh kar 🌸 Aapki shaadi kis city mein hold ho rahi hai?</ChatRight>
         <ChatLeft>Delhi mein, December 2026</ChatLeft>
@@ -342,7 +348,7 @@ function HinglishChatMockup() {
         <ChatLeft>Budget 25-30 lakhs around</ChatLeft>
         <ChatRight ai>Got it — 25-30L range, Delhi, December 2026. Thank you! One of our wedding planners will reach out shortly with a customised plan.</ChatRight>
         <div className="mt-3 rounded-md border border-success/30 bg-success-soft px-3 py-2 text-[11px] flex items-center gap-2">
-          <span className="text-success">✓</span>
+          <Check className="w-3.5 h-3.5 text-success flex-shrink-0" aria-hidden />
           <div>
             <div className="font-semibold text-success">Qualified · routed to human queue</div>
             <div className="text-text-secondary mt-0.5">City · Delhi  ·  Event · Dec 2026  ·  Budget · ₹25-30L</div>
@@ -359,7 +365,10 @@ function HandoffMockup() {
       <div className="bg-elevated">
         <div className="px-4 py-3 border-b border-border-default flex items-center justify-between">
           <div>
-            <div className="text-sm font-semibold">Mehak Khanna 🔥</div>
+            <div className="text-sm font-semibold inline-flex items-center gap-1">
+              Mehak Khanna
+              <Flame className="w-3.5 h-3.5 text-danger" fill="currentColor" aria-hidden />
+            </div>
             <div className="text-[10px] text-text-secondary">+91 98••• ••204 · returning · last active 8m ago</div>
           </div>
           <div className="flex items-center gap-0.5 rounded-full bg-muted p-0.5 text-[10px]">
@@ -369,20 +378,22 @@ function HandoffMockup() {
         </div>
 
         <div className="px-4 py-2.5 bg-canvas border-b border-border-default flex items-center gap-2 flex-wrap text-[10px]">
-          <Pill icon="📍" label="City" value="Mumbai" />
-          <Pill icon="📅" label="Event" value="Feb 2027" />
-          <Pill icon="👥" label="Guests" value="350" />
-          <Pill icon="💰" label="Budget" value="₹60L+" />
+          <Pill icon={MapPin}   label="City"   value="Mumbai" />
+          <Pill icon={Calendar} label="Event"  value="Feb 2027" />
+          <Pill icon={Users}    label="Guests" value="350" />
+          <Pill icon={Wallet}   label="Budget" value="₹60L+" />
         </div>
 
-        <div className="bg-warm p-4 space-y-2 min-h-[260px]">
+        <div className="bg-warm chat-pattern p-4 space-y-2 min-h-[260px]">
           <ChatLeft>Can you share approximate pricing for full planning + decor?</ChatLeft>
           <ChatRight human>Hi Mehak! Sharing a personalised plan now — one moment 🌸</ChatRight>
           <ChatLeft>Sure, take your time!</ChatLeft>
 
           <div className="mt-3 rounded-lg border border-brand/30 bg-brand-soft/50 px-3 py-2">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-brand">✨ Suggested reply</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-brand inline-flex items-center gap-1">
+                <Sparkles className="w-3 h-3" aria-hidden /> Suggested reply
+              </span>
               <span className="text-[9px] text-text-muted">drafted by AI</span>
             </div>
             <p className="text-[11px] text-text-default leading-relaxed">
@@ -455,7 +466,7 @@ function PushToCRMMockup() {
       <div className="bg-elevated p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-text-primary">Push to CRM</h3>
-          <span className="text-text-muted text-lg leading-none">×</span>
+          <X className="w-4 h-4 text-text-muted" aria-hidden />
         </div>
         <div className="space-y-3">
           <Field label="Client name" value="Priya Sharma" />
@@ -490,122 +501,6 @@ function PushToCRMMockup() {
   );
 }
 
-function AdminPanelMockup() {
-  return (
-    <FloatingCard>
-      <BrowserChrome compact label="inbox.acceltancy.in/admin" />
-      <div className="bg-elevated p-4">
-        {/* Tabs */}
-        <div className="flex gap-0.5 border-b border-border-default mb-4 text-[11px]">
-          <span className="px-2.5 py-1.5 text-text-muted">Users</span>
-          <span className="px-2.5 py-1.5 text-text-muted">Channels</span>
-          <span className="px-2.5 py-1.5 border-b-2 border-brand text-text-primary font-medium -mb-px">Pipelines</span>
-          <span className="px-2.5 py-1.5 text-text-muted">Contexts</span>
-          <span className="px-2.5 py-1.5 text-text-muted">Tags</span>
-          <span className="px-2.5 py-1.5 text-text-muted">System</span>
-        </div>
-
-        <div className="rounded-lg border border-border-default p-3 mb-3">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <div className="text-[11px] font-semibold text-text-primary">The Bride Side</div>
-              <div className="text-[10px] text-text-secondary">Currently: Planning → Lead In · set by Rudra</div>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-text-muted">Default mode</span>
-              <select className="text-[10px] border border-border-default rounded px-1.5 py-0.5 bg-elevated" disabled>
-                <option>AI</option>
-              </select>
-              <span className="text-[10px] text-success">Saved</span>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2 mb-2">
-            <div className="text-[10px]">
-              <div className="text-text-muted">Pipeline</div>
-              <div className="border border-border-default rounded px-2 py-1 mt-0.5 text-text-default">#67 Planning</div>
-            </div>
-            <div className="text-[10px]">
-              <div className="text-text-muted">Initial stage</div>
-              <div className="border border-border-default rounded px-2 py-1 mt-0.5 text-text-default">Lead In (#8)</div>
-            </div>
-          </div>
-          <div className="pt-2 border-t border-border-subtle">
-            <div className="text-[10px] font-medium text-text-secondary mb-1.5">Brand chip in the inbox rail</div>
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: '#7c3aed' }}>TBS</div>
-              <span className="text-[10px] text-text-muted">Preview</span>
-              <div className="w-6 h-6 rounded border border-border-default" style={{ backgroundColor: '#7c3aed' }} />
-              <input
-                className="flex-1 text-[10px] border border-border-default rounded px-1.5 py-1 bg-elevated text-text-muted font-mono"
-                value="https://…/logo.png"
-                readOnly
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-border-default p-3 opacity-70">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[11px] font-semibold text-text-primary">Revaah Decor</div>
-              <div className="text-[10px] text-text-secondary">Currently: Decor → New Inquiry</div>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-text-muted">Default mode</span>
-              <select className="text-[10px] border border-border-default rounded px-1.5 py-0.5 bg-warning-soft text-warning font-medium" disabled>
-                <option>Human</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </div>
-    </FloatingCard>
-  );
-}
-
-function ActivityTimelineMockup() {
-  const events: { who: string; when: string; what: string; tone: 'brand' | 'warning' | 'success' | 'muted' }[] = [
-    { who: 'Lead · Priya Sharma', when: '10:14',  what: 'Started a new WhatsApp conversation',                tone: 'muted'   },
-    { who: 'AI',                  when: '10:14',  what: 'Replied — asked for city',                            tone: 'muted'   },
-    { who: 'AI',                  when: '10:18',  what: 'Qualified · Delhi · Dec 2026 · ₹25-30L',              tone: 'success' },
-    { who: 'AI',                  when: '10:18',  what: 'Flagged callback — escalated to human',               tone: 'warning' },
-    { who: 'Rudra',               when: '10:22',  what: 'Switched mode to HUMAN · assigned to Vishwas',        tone: 'brand'   },
-    { who: 'Vishwas',             when: '10:31',  what: 'Replied — sent pricing one-pager',                    tone: 'muted'   },
-    { who: 'Lead · Priya Sharma', when: '11:02',  what: 'Read · Delivered',                                    tone: 'muted'   },
-    { who: 'Vishwas',             when: '11:18',  what: 'Pushed to CRM · Deal #4213 · pipeline Planning',      tone: 'brand'   },
-  ];
-
-  const toneClass: Record<string, string> = {
-    brand:   'bg-brand text-text-inverse',
-    warning: 'bg-warning text-text-inverse',
-    success: 'bg-success text-text-inverse',
-    muted:   'bg-muted text-text-muted',
-  };
-
-  return (
-    <FloatingCard>
-      <div className="bg-elevated p-5">
-        <div className="text-[10px] uppercase tracking-wide text-text-muted font-semibold mb-3">
-          Conversation activity · today
-        </div>
-        <ol className="relative space-y-3 pl-5">
-          <span className="absolute left-1.5 top-1 bottom-1 w-px bg-border-default" />
-          {events.map((e, i) => (
-            <li key={i} className="relative">
-              <span className={`absolute -left-[18px] top-1 w-3 h-3 rounded-full flex items-center justify-center text-[8px] ${toneClass[e.tone]}`} />
-              <div className="flex items-baseline gap-2 text-[11px]">
-                <span className="font-mono text-text-muted tabular-nums">{e.when}</span>
-                <span className="font-semibold text-text-primary">{e.who}</span>
-              </div>
-              <div className="text-[11px] text-text-secondary leading-snug">{e.what}</div>
-            </li>
-          ))}
-        </ol>
-      </div>
-    </FloatingCard>
-  );
-}
-
 // ─── Smaller features grid (the rest) ──────────────────────────────────────
 
 function SmallerFeatures() {
@@ -626,49 +521,59 @@ function SmallerFeatures() {
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
           <Feature
-            icon={<TemplateIcon />}
+            icon={<FileText className="w-5 h-5" />}
             title="Reply templates"
             body="Save the messages you type 30 times a week and recall them with a / shortcut. Each template is editable before sending."
           />
           <Feature
-            icon={<NotifyIcon />}
+            icon={<Bell className="w-5 h-5" />}
             title="Browser notifications"
             body="When a hot lead replies and your tab is in the background, the browser pings you. Unread badges in the sidebar too."
           />
           <Feature
-            icon={<ScoreIcon />}
+            icon={<Zap className="w-5 h-5" />}
             title="Lead scoring"
-            body="High-budget, near-term, multi-service leads bubble to the top automatically. The 🔥 marker tells you where to look first."
+            body="High-budget, near-term, multi-service leads bubble to the top automatically. The flame marker tells you where to look first."
           />
           <Feature
-            icon={<ReceiptIcon />}
+            icon={<CheckCheck className="w-5 h-5" />}
             title="Read + delivery receipts"
             body="See exactly when WhatsApp delivered your message and when the lead read it. No more guessing whether they ghosted or just got busy."
           />
           <Feature
-            icon={<SnoozeIcon />}
+            icon={<MoonStar className="w-5 h-5" />}
             title="Snooze + bulk actions"
             body="Send a thread back to your queue tomorrow morning. Select multiple to snooze, tag, or assign in one go."
           />
           <Feature
-            icon={<TagIcon />}
+            icon={<Tag className="w-5 h-5" />}
             title="Tag taxonomy"
             body="Admin-managed master list of tags. The DetailRail autocompletes from it; #vip / #VIP / #Vip collapse to the same canonical tag on save."
           />
           <Feature
-            icon={<MobileIcon />}
+            icon={<Smartphone className="w-5 h-5" />}
             title="Mobile-friendly"
             body="The DetailRail slides over instead of pushing the chat off-screen. Tap-to-dismiss backdrop, same workflow as desktop."
           />
           <Feature
-            icon={<AbstainIcon />}
+            icon={<Ban className="w-5 h-5" />}
             title="AI knows when not to answer"
             body="If a lead asks about exact pricing or contract terms, the AI abstains and tags the conversation so a planner steps in cleanly."
           />
           <Feature
-            icon={<MigrationIcon />}
+            icon={<Database className="w-5 h-5" />}
             title="System health checks"
             body="The System tab probes every table, column, and RPC the app depends on. Missed migrations surface at a glance — no silent failures."
+          />
+          <Feature
+            icon={<Settings2 className="w-5 h-5" />}
+            title="Admin panel"
+            body="Every brand-level setting in one place — channels, pipelines, default modes, brand colors, tags, per-brand AI prompts, teammate invites."
+          />
+          <Feature
+            icon={<History className="w-5 h-5" />}
+            title="Activity log"
+            body="Mode toggles, assignments, snoozes, callbacks, CRM pushes — every change timestamped against the conversation timeline so you can replay any thread."
           />
         </div>
       </div>
@@ -761,7 +666,7 @@ function ClosingCTA() {
               className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold bg-brand text-text-inverse hover:bg-brand-hover transition-colors shadow-lg"
             >
               Create your account
-              <Arrow className="w-3.5 h-3.5" />
+              <ArrowRight className="w-3.5 h-3.5" aria-hidden />
             </Link>
             <Link
               href="/login"
@@ -880,7 +785,7 @@ function MockConvRow({
       <div className="flex items-baseline justify-between gap-1">
         <span className={`text-[11px] truncate ${unread ? 'font-semibold text-text-primary' : 'font-medium text-text-default'}`}>
           {name}
-          {hot && <span className="ml-1">🔥</span>}
+          {hot && <Flame className="w-3 h-3 ml-1 text-danger flex-shrink-0 inline" fill="currentColor" aria-hidden />}
         </span>
         <span className="text-[9px] text-text-muted">{time}</span>
       </div>
@@ -939,18 +844,34 @@ function ChatRight({ children, ai, human }: { children: React.ReactNode; ai?: bo
       <div className={`max-w-[85%] rounded-lg rounded-tr-sm px-3 py-2 text-[11px] text-text-primary shadow-sm leading-relaxed ${
         ai ? 'bg-brand-tint' : human ? 'bg-warning-soft' : 'bg-brand-tint'
       }`}>
-        {ai && <div className="text-[8px] font-semibold uppercase text-brand mb-0.5 tracking-wide">✨ AI</div>}
-        {human && <div className="text-[8px] font-semibold uppercase text-warning mb-0.5 tracking-wide">👤 Vishwas</div>}
+        {ai && (
+          <div className="text-[8px] font-semibold uppercase text-brand mb-0.5 tracking-wide inline-flex items-center gap-1">
+            <Sparkles className="w-2.5 h-2.5" aria-hidden /> AI
+          </div>
+        )}
+        {human && (
+          <div className="text-[8px] font-semibold uppercase text-warning mb-0.5 tracking-wide inline-flex items-center gap-1">
+            <UserIcon className="w-2.5 h-2.5" aria-hidden /> Vishwas
+          </div>
+        )}
         {children}
       </div>
     </div>
   );
 }
 
-function Pill({ icon, label, value }: { icon: string; label: string; value: string }) {
+function Pill({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  label: string;
+  value: string;
+}) {
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-elevated border border-border-default">
-      <span>{icon}</span>
+      <Icon className="w-3 h-3 text-text-muted" aria-hidden />
       <span className="text-text-muted uppercase tracking-wide">{label}</span>
       <span className="font-medium text-text-default">{value}</span>
     </span>
@@ -970,38 +891,3 @@ function Field({ label, value, readOnly }: { label: string; value: string; readO
   );
 }
 
-// ─── Icons ─────────────────────────────────────────────────────────────────
-
-function Arrow({ className = '' }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m-6-6l6 6-6 6" />
-    </svg>
-  );
-}
-
-function CheckIcon({ className = '' }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-    </svg>
-  );
-}
-
-function Icon({ children }: { children: React.ReactNode }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} className="w-5 h-5">
-      {children}
-    </svg>
-  );
-}
-
-function ScoreIcon()     { return <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M13 2L3 14h7v8l10-12h-7V2z" /></Icon>; }
-function TemplateIcon()  { return <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h16" /></Icon>; }
-function NotifyIcon()    { return <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.4-1.4A7 7 0 0119 11V8a7 7 0 10-14 0v3a7 7 0 01-.6 4.6L3 17h5m7 0a3 3 0 11-6 0" /></Icon>; }
-function ReceiptIcon()   { return <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M5 12l5 5L20 7M2 12l5 5" /></Icon>; }
-function SnoozeIcon()    { return <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z" /></Icon>; }
-function TagIcon()       { return <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M5 3h8a2 2 0 011.414.586l7 7a2 2 0 010 2.828l-8 8a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V4a1 1 0 011-1z" /></Icon>; }
-function MobileIcon()    { return <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M7 2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2 0 01-2-2V4a2 2 0 012-2zm5 17h.01" /></Icon>; }
-function AbstainIcon()   { return <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></Icon>; }
-function MigrationIcon() { return <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2 1.5 3 3 3h10c1.5 0 3-1 3-3V7m-16 0c0-2 1.5-3 3-3h10c1.5 0 3 1 3 3M4 7h16M9 11l2 2 4-4" /></Icon>; }

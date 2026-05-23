@@ -1,5 +1,6 @@
 'use client';
 
+import { Check } from 'lucide-react';
 import Button from '@/components/ui/Button';
 
 export interface BrandOption {
@@ -67,7 +68,7 @@ export default function BrandsStep({ brands, selected, onChange, pipelineError, 
                   ${checked ? 'border-brand bg-brand text-text-inverse' : 'border-border-default bg-elevated'}`}
                 aria-hidden
               >
-                {checked && <span className="text-[11px] leading-none">✓</span>}
+                {checked && <Check className="w-3 h-3" aria-hidden />}
               </span>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-text-primary">{b.name}</div>

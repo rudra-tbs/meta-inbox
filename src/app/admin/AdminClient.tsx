@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft } from 'lucide-react';
 import type { AppUser } from '@/types';
-import Button from '@/components/ui/Button';
 import UsersTab from './tabs/UsersTab';
 import PipelinesTab from './tabs/PipelinesTab';
 import ChannelsTab from './tabs/ChannelsTab';
@@ -35,19 +35,22 @@ const TABS: Array<{ id: TabId; label: string; sub: string }> = [
 export default function AdminClient({ currentUser }: AdminClientProps) {
   const router = useRouter();
   const [active, setActive] = useState<TabId>('users');
+  const activeTab = TABS.find((t) => t.id === active)!;
 
   return (
     <div className="min-h-screen bg-canvas">
       <header className="border-b border-border-default bg-elevated">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => router.push('/inbox')}
-              className="text-text-secondary hover:text-text-primary text-sm whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 text-text-secondary hover:text-text-primary text-sm whitespace-nowrap"
               aria-label="Back to inbox"
             >
-              ← Inbox
+              <ArrowLeft className="w-4 h-4" aria-hidden />
+              Inbox
             </button>
+            <span className="w-px h-4 bg-border-default" aria-hidden />
             <span className="text-sm font-semibold text-text-primary truncate">Admin panel</span>
           </div>
           <div className="flex items-center gap-2">
@@ -61,39 +64,60 @@ export default function AdminClient({ currentUser }: AdminClientProps) {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-6">
-        <div className="flex flex-wrap gap-1 border-b border-border-default mb-6 overflow-x-auto">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setActive(t.id)}
-              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
-                active === t.id
-                  ? 'border-brand text-text-primary'
-                  : 'border-transparent text-text-secondary hover:text-text-primary'
-              }`}
-              title={t.sub}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <main className="max-w-6xl mx-auto px-6 py-6 md:grid md:grid-cols-[240px_1fr] md:gap-8">
+        {/* Sidenav */}
+        <nav
+          aria-label="Admin sections"
+          className="md:sticky md:top-6 md:self-start"
+        >
+          {/* Mobile: horizontal scroll. md+: vertical list. */}
+          <div className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible border-b md:border-b-0 border-border-default md:border-none pb-3 md:pb-0 mb-4 md:mb-0">
+            {TABS.map((t) => {
+              const isActive = active === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setActive(t.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`
+                    relative text-left whitespace-nowrap md:whitespace-normal
+                    flex-shrink-0 md:flex-shrink
+                    px-3 py-2 md:px-3 md:py-2.5
+                    rounded-md transition-colors
+                    ${isActive
+                      ? 'bg-brand-soft text-text-primary md:before:absolute md:before:left-0 md:before:top-1.5 md:before:bottom-1.5 md:before:w-0.5 md:before:rounded-r md:before:bg-brand'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-canvas'}
+                  `}
+                >
+                  <span className={`block text-sm font-medium ${isActive ? 'text-text-primary' : ''}`}>
+                    {t.label}
+                  </span>
+                  <span className="hidden md:block text-[11px] text-text-muted leading-snug mt-0.5">
+                    {t.sub}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
 
-        {active === 'users'     && <UsersTab currentUserId={currentUser.id} />}
-        {active === 'channels'  && <ChannelsTab />}
-        {active === 'pipelines' && <PipelinesTab />}
-        {active === 'contexts'  && <BrandContextsTab />}
-        {active === 'templates' && <TemplatesTab />}
-        {active === 'tags'      && <TagsTab />}
-        {active === 'reports'   && <ReportsTab />}
-        {active === 'activity'  && <ActivityTab />}
-        {active === 'system'    && <SystemTab />}
+        {/* Content */}
+        <section className="min-w-0">
+          <div className="mb-6 pb-4 border-b border-border-default">
+            <h1 className="text-xl font-semibold text-text-primary tracking-tight">{activeTab.label}</h1>
+            <p className="text-sm text-text-secondary mt-1 leading-relaxed">{activeTab.sub}</p>
+          </div>
 
-        <div className="mt-10 pt-6 border-t border-border-default">
-          <Button variant="ghost" size="sm" onClick={() => router.push('/inbox')}>
-            ← Done
-          </Button>
-        </div>
+          {active === 'users'     && <UsersTab currentUserId={currentUser.id} />}
+          {active === 'channels'  && <ChannelsTab />}
+          {active === 'pipelines' && <PipelinesTab />}
+          {active === 'contexts'  && <BrandContextsTab />}
+          {active === 'templates' && <TemplatesTab />}
+          {active === 'tags'      && <TagsTab />}
+          {active === 'reports'   && <ReportsTab />}
+          {active === 'activity'  && <ActivityTab />}
+          {active === 'system'    && <SystemTab />}
+        </section>
       </main>
     </div>
   );

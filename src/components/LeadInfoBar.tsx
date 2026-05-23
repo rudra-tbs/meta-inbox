@@ -1,5 +1,7 @@
 'use client';
 
+import { Calendar, MapPin, Sparkles, Users, Wallet } from 'lucide-react';
+import type { ComponentType, SVGProps } from 'react';
 import type { Conversation } from '@/types';
 
 interface LeadInfoBarProps {
@@ -11,13 +13,15 @@ interface LeadInfoBarProps {
 // so the operator can tell at a glance what's still missing without
 // opening the rail.
 
+type IconType = ComponentType<SVGProps<SVGSVGElement>>;
+
 function InfoPill({
-  icon,
+  icon: Icon,
   label,
   value,
   empty,
 }: {
-  icon: string;
+  icon: IconType;
   label: string;
   value: string;
   empty?: boolean;
@@ -31,7 +35,7 @@ function InfoPill({
       }`}
       title={empty ? `${label} not set — click "Lead" in the right panel to add` : undefined}
     >
-      <span className={`text-xs ${empty ? 'opacity-50' : ''}`}>{icon}</span>
+      <Icon className={`w-3 h-3 ${empty ? 'text-text-disabled' : 'text-text-muted'}`} aria-hidden />
       <span className={`text-[10px] uppercase tracking-wide ${empty ? 'text-text-disabled' : 'text-text-muted'}`}>
         {label}
       </span>
@@ -43,12 +47,12 @@ function InfoPill({
 }
 
 export default function LeadInfoBar({ conversation }: LeadInfoBarProps) {
-  const fields = [
-    { icon: '📍', label: 'City',    value: conversation.city },
-    { icon: '📅', label: 'Event',   value: conversation.wedding_date },
-    { icon: '👥', label: 'Guests',  value: conversation.guest_count },
-    { icon: '💰', label: 'Budget',  value: conversation.budget_range },
-    { icon: '✨', label: 'Service', value: conversation.service_type },
+  const fields: { icon: IconType; label: string; value: string | null | undefined }[] = [
+    { icon: MapPin,   label: 'City',    value: conversation.city },
+    { icon: Calendar, label: 'Event',   value: conversation.wedding_date },
+    { icon: Users,    label: 'Guests',  value: conversation.guest_count },
+    { icon: Wallet,   label: 'Budget',  value: conversation.budget_range },
+    { icon: Sparkles, label: 'Service', value: conversation.service_type },
   ];
   const anyFilled = fields.some((f) => !!f.value && f.value.trim().length > 0);
   if (!anyFilled) return null;

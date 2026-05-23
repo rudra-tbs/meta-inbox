@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, Fragment } from 'react';
+import { ArrowLeft, Flame, MoonStar, MoreHorizontal } from 'lucide-react';
 import type { Conversation, Message, AppUser, ReplyTemplate } from '@/types';
 import { SNOOZE_PRESETS } from '@/types';
 import MessageBubble from './MessageBubble';
@@ -289,10 +290,10 @@ export default function ChatWindow({
           {onBack && (
             <button
               onClick={onBack}
-              className="md:hidden text-text-secondary hover:text-text-primary text-lg leading-none"
+              className="md:hidden inline-flex items-center justify-center text-text-secondary hover:text-text-primary"
               aria-label="Back"
             >
-              ←
+              <ArrowLeft className="w-5 h-5" aria-hidden />
             </button>
           )}
           <div className="min-w-0">
@@ -303,7 +304,7 @@ export default function ChatWindow({
                   title={`Lead score ${score}`}
                   className="inline-flex items-center gap-1 text-[10px] font-semibold text-danger bg-danger-soft border border-danger/20 rounded-full px-1.5 py-0.5 flex-shrink-0"
                 >
-                  🔥 {score}
+                  <Flame className="w-3 h-3" aria-hidden fill="currentColor" /> {score}
                 </span>
               )}
               {isNewLead && (
@@ -349,7 +350,7 @@ export default function ChatWindow({
               aria-expanded={showSnoozeMenu}
               className={isSnoozed ? 'bg-snooze-soft text-snooze border-snooze/20' : ''}
             >
-              <span aria-hidden>💤</span>
+              <MoonStar className="w-4 h-4" aria-hidden />
             </Button>
             {showSnoozeMenu && (
               <div className="absolute top-full right-0 mt-1 bg-elevated border border-border-default rounded-lg shadow-lg z-10 py-1 min-w-[200px]">
@@ -427,7 +428,7 @@ export default function ChatWindow({
             aria-expanded={showDetail}
             className={showDetail ? 'bg-canvas border-border-strong text-text-primary' : ''}
           >
-            <span aria-hidden>⋯</span>
+            <MoreHorizontal className="w-4 h-4" aria-hidden />
           </Button>
           {conversation.pushed_to_crm ? (
             <span className="inline-flex items-center gap-1.5 text-[11px] text-success font-medium ml-1" title={`Deal #${conversation.crm_deal_id}${conversation.crm_stage_name ? ` · ${conversation.crm_stage_name}` : ''}`}>
