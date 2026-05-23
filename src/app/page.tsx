@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { Calendar, Check, Flame, MapPin, Sparkles, User as UserIcon, Users, Wallet, X } from 'lucide-react';
+import type { ComponentType, SVGProps } from 'react';
 import { createServerClient as createSupabaseSSR } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -342,7 +344,7 @@ function HinglishChatMockup() {
         <ChatLeft>Budget 25-30 lakhs around</ChatLeft>
         <ChatRight ai>Got it — 25-30L range, Delhi, December 2026. Thank you! One of our wedding planners will reach out shortly with a customised plan.</ChatRight>
         <div className="mt-3 rounded-md border border-success/30 bg-success-soft px-3 py-2 text-[11px] flex items-center gap-2">
-          <span className="text-success">✓</span>
+          <Check className="w-3.5 h-3.5 text-success flex-shrink-0" aria-hidden />
           <div>
             <div className="font-semibold text-success">Qualified · routed to human queue</div>
             <div className="text-text-secondary mt-0.5">City · Delhi  ·  Event · Dec 2026  ·  Budget · ₹25-30L</div>
@@ -359,7 +361,10 @@ function HandoffMockup() {
       <div className="bg-elevated">
         <div className="px-4 py-3 border-b border-border-default flex items-center justify-between">
           <div>
-            <div className="text-sm font-semibold">Mehak Khanna 🔥</div>
+            <div className="text-sm font-semibold inline-flex items-center gap-1">
+              Mehak Khanna
+              <Flame className="w-3.5 h-3.5 text-danger" fill="currentColor" aria-hidden />
+            </div>
             <div className="text-[10px] text-text-secondary">+91 98••• ••204 · returning · last active 8m ago</div>
           </div>
           <div className="flex items-center gap-0.5 rounded-full bg-muted p-0.5 text-[10px]">
@@ -369,10 +374,10 @@ function HandoffMockup() {
         </div>
 
         <div className="px-4 py-2.5 bg-canvas border-b border-border-default flex items-center gap-2 flex-wrap text-[10px]">
-          <Pill icon="📍" label="City" value="Mumbai" />
-          <Pill icon="📅" label="Event" value="Feb 2027" />
-          <Pill icon="👥" label="Guests" value="350" />
-          <Pill icon="💰" label="Budget" value="₹60L+" />
+          <Pill icon={MapPin}   label="City"   value="Mumbai" />
+          <Pill icon={Calendar} label="Event"  value="Feb 2027" />
+          <Pill icon={Users}    label="Guests" value="350" />
+          <Pill icon={Wallet}   label="Budget" value="₹60L+" />
         </div>
 
         <div className="bg-warm p-4 space-y-2 min-h-[260px]">
@@ -382,7 +387,9 @@ function HandoffMockup() {
 
           <div className="mt-3 rounded-lg border border-brand/30 bg-brand-soft/50 px-3 py-2">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-brand">✨ Suggested reply</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-brand inline-flex items-center gap-1">
+                <Sparkles className="w-3 h-3" aria-hidden /> Suggested reply
+              </span>
               <span className="text-[9px] text-text-muted">drafted by AI</span>
             </div>
             <p className="text-[11px] text-text-default leading-relaxed">
@@ -455,7 +462,7 @@ function PushToCRMMockup() {
       <div className="bg-elevated p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-text-primary">Push to CRM</h3>
-          <span className="text-text-muted text-lg leading-none">×</span>
+          <X className="w-4 h-4 text-text-muted" aria-hidden />
         </div>
         <div className="space-y-3">
           <Field label="Client name" value="Priya Sharma" />
@@ -638,7 +645,7 @@ function SmallerFeatures() {
           <Feature
             icon={<ScoreIcon />}
             title="Lead scoring"
-            body="High-budget, near-term, multi-service leads bubble to the top automatically. The 🔥 marker tells you where to look first."
+            body="High-budget, near-term, multi-service leads bubble to the top automatically. The flame marker tells you where to look first."
           />
           <Feature
             icon={<ReceiptIcon />}
@@ -880,7 +887,7 @@ function MockConvRow({
       <div className="flex items-baseline justify-between gap-1">
         <span className={`text-[11px] truncate ${unread ? 'font-semibold text-text-primary' : 'font-medium text-text-default'}`}>
           {name}
-          {hot && <span className="ml-1">🔥</span>}
+          {hot && <Flame className="w-3 h-3 ml-1 text-danger flex-shrink-0 inline" fill="currentColor" aria-hidden />}
         </span>
         <span className="text-[9px] text-text-muted">{time}</span>
       </div>
@@ -939,18 +946,34 @@ function ChatRight({ children, ai, human }: { children: React.ReactNode; ai?: bo
       <div className={`max-w-[85%] rounded-lg rounded-tr-sm px-3 py-2 text-[11px] text-text-primary shadow-sm leading-relaxed ${
         ai ? 'bg-brand-tint' : human ? 'bg-warning-soft' : 'bg-brand-tint'
       }`}>
-        {ai && <div className="text-[8px] font-semibold uppercase text-brand mb-0.5 tracking-wide">✨ AI</div>}
-        {human && <div className="text-[8px] font-semibold uppercase text-warning mb-0.5 tracking-wide">👤 Vishwas</div>}
+        {ai && (
+          <div className="text-[8px] font-semibold uppercase text-brand mb-0.5 tracking-wide inline-flex items-center gap-1">
+            <Sparkles className="w-2.5 h-2.5" aria-hidden /> AI
+          </div>
+        )}
+        {human && (
+          <div className="text-[8px] font-semibold uppercase text-warning mb-0.5 tracking-wide inline-flex items-center gap-1">
+            <UserIcon className="w-2.5 h-2.5" aria-hidden /> Vishwas
+          </div>
+        )}
         {children}
       </div>
     </div>
   );
 }
 
-function Pill({ icon, label, value }: { icon: string; label: string; value: string }) {
+function Pill({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  label: string;
+  value: string;
+}) {
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-elevated border border-border-default">
-      <span>{icon}</span>
+      <Icon className="w-3 h-3 text-text-muted" aria-hidden />
       <span className="text-text-muted uppercase tracking-wide">{label}</span>
       <span className="font-medium text-text-default">{value}</span>
     </span>

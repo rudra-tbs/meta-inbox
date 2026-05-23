@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Check } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getSupabaseBrowser } from '@/lib/supabase';
 
@@ -106,8 +107,8 @@ export default function ResetPasswordPage() {
           </div>
         ) : done ? (
           <div className="text-center space-y-2">
-            <div className="w-10 h-10 mx-auto rounded-full bg-success-soft text-success flex items-center justify-center text-lg">
-              ✓
+            <div className="w-10 h-10 mx-auto rounded-full bg-success-soft text-success flex items-center justify-center">
+              <Check className="w-5 h-5" aria-hidden />
             </div>
             <p className="text-sm text-text-default">Password updated. Redirecting…</p>
           </div>

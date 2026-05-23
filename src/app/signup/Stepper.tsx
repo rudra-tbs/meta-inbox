@@ -1,5 +1,7 @@
 'use client';
 
+import { Check } from 'lucide-react';
+
 interface StepperProps {
   steps: string[];
   current: number; // 0-indexed
@@ -21,7 +23,7 @@ export default function Stepper({ steps, current }: StepperProps) {
                   ${!done && !active ? 'bg-muted text-text-muted' : ''}`}
                 aria-current={active ? 'step' : undefined}
               >
-                {done ? '✓' : i + 1}
+                {done ? <Check className="w-3 h-3" aria-hidden /> : i + 1}
               </span>
               <span
                 className={`text-[12px] truncate transition-colors

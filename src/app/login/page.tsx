@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { AlertTriangle, Info, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getSupabaseBrowser } from '@/lib/supabase';
 
@@ -198,9 +199,11 @@ export default function LoginPage() {
                   : 'bg-danger-soft border-danger/20 text-danger'
               }`}
             >
-              <span aria-hidden className="text-base leading-none mt-0.5">
-                {error.tone === 'info' ? 'ℹ️' : '⚠️'}
-              </span>
+              {error.tone === 'info' ? (
+                <Info className="w-4 h-4 text-info mt-0.5 flex-shrink-0" aria-hidden />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-danger mt-0.5 flex-shrink-0" aria-hidden />
+              )}
               <div className="flex-1 min-w-0">
                 <div className={`text-sm font-medium ${error.tone === 'info' ? 'text-text-primary' : ''}`}>
                   {error.title}
@@ -212,10 +215,10 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => setError(null)}
-                className={`text-base leading-none ${error.tone === 'info' ? 'text-text-muted hover:text-text-primary' : 'text-danger/70 hover:text-danger'}`}
+                className={`inline-flex items-center justify-center ${error.tone === 'info' ? 'text-text-muted hover:text-text-primary' : 'text-danger/70 hover:text-danger'}`}
                 aria-label="Dismiss"
               >
-                ×
+                <X className="w-3.5 h-3.5" aria-hidden />
               </button>
             </div>
           )}
@@ -250,10 +253,10 @@ export default function LoginPage() {
               <h2 className="text-base font-semibold text-text-primary">Reset password</h2>
               <button
                 onClick={() => setForgotOpen(false)}
-                className="text-text-muted hover:text-text-primary text-xl leading-none"
+                className="inline-flex items-center justify-center text-text-muted hover:text-text-primary"
                 aria-label="Close"
               >
-                ×
+                <X className="w-4 h-4" aria-hidden />
               </button>
             </div>
 
