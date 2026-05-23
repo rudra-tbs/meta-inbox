@@ -118,7 +118,11 @@ export default function ConversationItem({
       {onToggleCheck && (
         <label
           onClick={(e) => { e.stopPropagation(); onToggleCheck(); }}
-          className={`flex-shrink-0 mt-2 w-4 h-4 transition-opacity
+          // The visible checkbox stays 16px; the surrounding tap area
+          // is bumped to ~36px so a finger anywhere near the input
+          // hits it on touch devices. Negative margin offsets the
+          // padding so the row layout doesn't shift.
+          className={`flex-shrink-0 inline-flex items-center justify-center -my-2 -ml-1 mt-1 w-9 h-9 transition-opacity
             ${selectionActive || checked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
         >
           <input
