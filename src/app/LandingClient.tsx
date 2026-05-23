@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import {
   ArrowRight,
+  BadgeCheck,
   Ban,
   Bell,
   Calendar,
@@ -13,6 +14,7 @@ import {
   Flame,
   History,
   MapPin,
+  MessageSquare,
   MoonStar,
   Settings2,
   Smartphone,
@@ -24,6 +26,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import { Fragment } from 'react';
 import type { ComponentType, SVGProps } from 'react';
 import { useCountUp, useCycle, useReveal, useStream } from '@/lib/use-reveal';
 
@@ -81,6 +84,7 @@ export default function LandingClient() {
       />
       <SmallerFeatures />
       <HowItWorks />
+      <Lifecycle />
       <ClosingCTA />
       <Footer />
     </div>
@@ -725,6 +729,99 @@ function Step({ n, title, body }: { n: number; title: string; body: string }) {
       <h3 className="text-lg font-semibold text-text-primary">{title}</h3>
       <p className="mt-2 text-sm text-text-secondary leading-relaxed">{body}</p>
     </div>
+  );
+}
+
+// ─── Lifecycle preview ─────────────────────────────────────────────────────
+
+const LIFECYCLE_STAGES: Array<{
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  label: string;
+  sub: string;
+}> = [
+  { icon: MessageSquare, label: 'Lead',      sub: 'Inbound WhatsApp' },
+  { icon: Sparkles,      label: 'AI',        sub: 'Qualifies in their language' },
+  { icon: BadgeCheck,    label: 'Qualified', sub: 'City · date · budget locked' },
+  { icon: UserIcon,      label: 'Human',     sub: 'Planner takes over' },
+  { icon: Database,      label: 'CRM',       sub: 'Deal pushed · audit logged' },
+];
+
+function Lifecycle() {
+  const { ref, revealed } = useReveal<HTMLDivElement>();
+  // Walk through the 5 stages on a 1.6s loop once the section
+  // scrolls in. The active node pulses, past nodes stay tinted, and
+  // the connectors fill brand-color up to (and partially through)
+  // the active node.
+  const i = useCycle(LIFECYCLE_STAGES.length, 1600, revealed);
+  return (
+    <section className="border-y border-border-default bg-canvas">
+      <div ref={ref} className="max-w-6xl mx-auto px-4 md:px-6 py-16 md:py-24">
+        <div className="text-center max-w-2xl mx-auto mb-10 md:mb-14">
+          <div className="inline-block text-xs font-semibold uppercase tracking-wider text-brand mb-3">
+            Lifecycle
+          </div>
+          <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
+            Watch a lead travel through the inbox.
+          </h2>
+          <p className="mt-4 text-base text-text-secondary leading-relaxed">
+            Five stages, fully automated until a planner steps in.
+          </p>
+        </div>
+
+        <div className="flex flex-col md:flex-row items-stretch md:items-start gap-8 md:gap-0">
+          {LIFECYCLE_STAGES.map((stage, idx) => {
+            const Icon = stage.icon;
+            const isActive = idx === i;
+            const isPast = idx < i;
+            const fillPct = idx < i ? 100 : idx === i ? 50 : 0;
+            return (
+              <Fragment key={stage.label}>
+                <div className="flex-1 flex flex-col items-center text-center min-w-0">
+                  <div
+                    className={`relative w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center transition-all duration-500 ${
+                      isActive
+                        ? 'bg-brand text-text-inverse shadow-lg scale-105'
+                        : isPast
+                          ? 'bg-brand-soft text-brand'
+                          : 'bg-elevated text-text-muted border border-border-default'
+                    }`}
+                  >
+                    <Icon className="w-5 h-5 md:w-6 md:h-6" aria-hidden />
+                    {isActive && (
+                      <span
+                        className="absolute inset-0 rounded-full bg-brand/30 animate-ping"
+                        aria-hidden
+                      />
+                    )}
+                  </div>
+                  <div
+                    className={`mt-3 text-sm font-semibold transition-colors ${
+                      isActive ? 'text-text-primary' : isPast ? 'text-text-default' : 'text-text-muted'
+                    }`}
+                  >
+                    {stage.label}
+                  </div>
+                  <div className="text-[11px] text-text-secondary mt-0.5 leading-snug max-w-[140px]">
+                    {stage.sub}
+                  </div>
+                </div>
+                {idx < LIFECYCLE_STAGES.length - 1 && (
+                  <div
+                    className="hidden md:block self-center h-0.5 flex-shrink-0 w-12 lg:w-20 bg-border-default relative mt-7 mx-1"
+                    aria-hidden
+                  >
+                    <div
+                      className="absolute inset-y-0 left-0 bg-brand transition-[width] duration-700 ease-out"
+                      style={{ width: `${fillPct}%` }}
+                    />
+                  </div>
+                )}
+              </Fragment>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 
