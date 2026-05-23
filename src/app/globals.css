@@ -81,6 +81,15 @@ body {
 *::-webkit-scrollbar-thumb { background-color: rgb(var(--border-strong)); border-radius: 99px; }
 *::-webkit-scrollbar-thumb:hover { background-color: rgb(var(--text-muted)); }
 
+/* Marketing-only: subtle dot pattern that gives chat-style mockups
+   visual texture without the WhatsApp beige wallpaper. NOT used in
+   the actual inbox — applied inline alongside bg-warm on landing
+   mockup panels. */
+.chat-pattern {
+  background-image: radial-gradient(rgb(var(--text-muted) / 0.08) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
 /* Keyboard hint */
 kbd {
   font-family: ui-monospace, SFMono-Regular, monospace;
