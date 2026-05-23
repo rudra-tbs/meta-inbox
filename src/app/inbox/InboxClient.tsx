@@ -583,6 +583,22 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
         label: 'Refresh CRM stages',
         run: () => refreshStagesFromCRM(),
       },
+      {
+        id: 'export-conversation',
+        label: 'Export conversation as Markdown',
+        run: ({ selectedConversation }) => {
+          if (!selectedConversation) return;
+          // Anchor-tag download via JS avoids a navigation and lets us
+          // keep the inbox tab in place. Same endpoint the DetailRail
+          // link hits.
+          const a = document.createElement('a');
+          a.href = `/api/conversations/${selectedConversation.id}/export`;
+          a.download = '';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        },
+      },
       // Stage-change shortcuts. Built from the current pipeline's
       // stages — only appears when a conversation is pushed to CRM.
       // We don't know the selected conversation here (it's passed via
