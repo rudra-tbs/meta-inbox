@@ -1,5 +1,6 @@
 'use client';
 
+import { Flame } from 'lucide-react';
 import type { Conversation } from '@/types';
 import Dot from './ui/Dot';
 
@@ -15,9 +16,17 @@ interface ConversationItemProps {
   onToggleCheck?: () => void;
 }
 
+// Tonal pairs (bg + text). Lighter background, darker initials —
+// reads as a polished operator surface rather than saturated pastels.
 const AVATAR_COLORS = [
-  'bg-rose-300', 'bg-pink-300', 'bg-purple-300', 'bg-violet-300',
-  'bg-indigo-300', 'bg-sky-300', 'bg-teal-300', 'bg-amber-300',
+  'bg-rose-100 text-rose-700',
+  'bg-pink-100 text-pink-700',
+  'bg-purple-100 text-purple-700',
+  'bg-violet-100 text-violet-700',
+  'bg-indigo-100 text-indigo-700',
+  'bg-sky-100 text-sky-700',
+  'bg-emerald-100 text-emerald-700',
+  'bg-amber-100 text-amber-700',
 ];
 
 function getAvatarColor(str: string): string {
@@ -138,7 +147,7 @@ export default function ConversationItem({
 
       {/* Avatar */}
       <div className="relative flex-shrink-0">
-        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-[11px] font-medium ${colorClass}`}>
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-semibold ring-1 ring-inset ring-black/[0.04] ${colorClass}`}>
           {initials}
         </div>
         {hasUnread ? (
@@ -156,7 +165,13 @@ export default function ConversationItem({
         <div className="flex items-baseline justify-between gap-1.5">
           <span className={`text-[13px] truncate text-text-primary ${selected || hasUnread ? 'font-semibold' : 'font-medium'}`}>
             {displayName}
-            {score >= 60 && <span className="ml-1 text-[11px]" title={`Lead score ${score}`}>🔥</span>}
+            {score >= 60 && (
+              <Flame
+                className="w-3 h-3 ml-1 text-danger flex-shrink-0"
+                aria-label={`Lead score ${score}`}
+                fill="currentColor"
+              />
+            )}
           </span>
           <span className="flex items-center gap-1.5 flex-shrink-0">
             {hasUnread && (
