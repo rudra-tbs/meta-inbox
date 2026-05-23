@@ -142,15 +142,20 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
-      <div className="w-96 bg-elevated rounded-2xl shadow-lg border border-border-default p-8">
-        <div className="text-center mb-8">
-          <div className="w-12 h-12 bg-brand rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-text-inverse font-bold text-xl">A</span>
+    <div className="min-h-screen bg-canvas lg:grid lg:grid-cols-2">
+      {/* Left: form */}
+      <div className="flex items-center justify-center p-6 lg:p-10">
+        <div className="w-full max-w-[420px] bg-elevated rounded-2xl shadow-lg border border-border-default p-8">
+          <div className="mb-8">
+            <a href="/" className="inline-flex items-center gap-2 mb-6">
+              <div className="w-7 h-7 bg-brand rounded-lg flex items-center justify-center">
+                <span className="text-text-inverse font-bold text-sm">A</span>
+              </div>
+              <span className="text-sm font-semibold tracking-tight text-text-primary">Inbox</span>
+            </a>
+            <h1 className="text-2xl font-semibold text-text-primary tracking-tight">Welcome back</h1>
+            <p className="text-sm text-text-secondary mt-1">Sign in to keep your queue moving.</p>
           </div>
-          <h1 className="text-2xl font-semibold text-text-primary">Inbox</h1>
-          <p className="text-sm text-text-secondary mt-1">Sign in with your team account</p>
-        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -232,13 +237,52 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-xs text-text-secondary mt-6">
-          New to Acceltancy?{' '}
-          <a href="/signup" className="text-brand font-medium hover:underline">
-            Create an account
-          </a>
-        </p>
+          <p className="text-center text-xs text-text-secondary mt-6">
+            New to Acceltancy?{' '}
+            <a href="/signup" className="text-brand font-medium hover:underline">
+              Create an account
+            </a>
+          </p>
+        </div>
       </div>
+
+      {/* Right: brand panel (lg+ only) */}
+      <aside
+        aria-hidden
+        className="hidden lg:flex relative overflow-hidden bg-inverse text-text-inverse items-center justify-center p-10"
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-brand/30 via-brand/10 to-transparent pointer-events-none" />
+        <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-brand/20 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-40 -left-20 w-80 h-80 rounded-full bg-brand/10 blur-3xl pointer-events-none" />
+
+        <div className="relative max-w-md">
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/10 text-white/80 text-[11px] font-medium mb-6 border border-white/10">
+            <span className="w-1.5 h-1.5 rounded-full bg-success" />
+            Internal tool · Acceltancy team
+          </div>
+          <h2 className="text-3xl font-bold tracking-tight leading-tight">
+            The team console for every WhatsApp lead.
+          </h2>
+          <p className="mt-4 text-base text-white/70 leading-relaxed">
+            Inbound leads land here. An AI qualifies them in their language, hands off when they&apos;re
+            ready to talk numbers, and pushes the closed deal straight to the CRM.
+          </p>
+          <ul className="mt-8 space-y-3 text-sm text-white/80">
+            <li className="flex items-start gap-2.5">
+              <span className="mt-1.5 w-1 h-1 rounded-full bg-white/60 flex-shrink-0" />
+              <span>One inbox, every brand you handle</span>
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-1.5 w-1 h-1 rounded-full bg-white/60 flex-shrink-0" />
+              <span>AI replies in Hindi, English, or Hinglish</span>
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-1.5 w-1 h-1 rounded-full bg-white/60 flex-shrink-0" />
+              <span>Push qualified leads to CRM in one click</span>
+            </li>
+          </ul>
+        </div>
+      </aside>
 
       {forgotOpen && (
         <div
