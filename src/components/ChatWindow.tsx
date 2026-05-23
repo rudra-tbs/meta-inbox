@@ -13,7 +13,9 @@ import Button from './ui/Button';
 import Dot from './ui/Dot';
 import AiTypingIndicator from './AiTypingIndicator';
 import MessagesSkeleton from './MessagesSkeleton';
+import PresenceAvatars from './PresenceAvatars';
 import { toast } from '@/lib/toast';
+import { usePresence } from '@/lib/use-presence';
 
 interface ChatWindowProps {
   conversation: Conversation;
@@ -116,6 +118,15 @@ export default function ChatWindow({
   const isHumanMode = conversation.mode === 'HUMAN';
   const suggestion = conversation.suggested_reply;
   const isSnoozed = !!conversation.snoozed_until && new Date(conversation.snoozed_until) > new Date();
+
+  // Per-conversation presence — every RM who has this conversation
+  // open right now shows up as a tiny avatar in the header. Prevents
+  // two operators replying at the same time. One Supabase channel
+  // per conversation; the hook handles subscribe/track/cleanup.
+  const presenceOthers = usePresence({
+    channel: `presence:conv:${conversation.id}`,
+    self: { user_id: currentUser.id, name: currentUser.name },
+  });
 
   // "AI · drafting" heuristic. We don't have a server-side signal for
   // "AI is currently generating a reply" — so we infer it from message
@@ -321,6 +332,9 @@ export default function ChatWindow({
         </div>
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
+          {presenceOthers.length > 0 && (
+            <PresenceAvatars others={presenceOthers} />
+          )}
           <div data-tour="mode-toggle">
             <ModeToggle conversation={conversation} onToggle={onModeChange} />
           </div>
