@@ -57,6 +57,52 @@ export function useReveal<T extends HTMLElement = HTMLDivElement>(
   return { ref, revealed };
 }
 
+// Drives a "streaming" reveal — each tick advances a count from 0 to
+// `itemCount`. The caller renders `items.slice(0, shown)`, so each
+// tick adds the next item. Useful for chat-bubble mockups that fake
+// a live conversation. Reduced-motion users get all items
+// immediately.
+
+export function useStream(itemCount: number, intervalMs: number, run: boolean): number {
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    if (!run) {
+      setShown(0);
+      return;
+    }
+    const reduce = typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) {
+      setShown(itemCount);
+      return;
+    }
+    if (shown >= itemCount) return;
+    const id = setTimeout(
+      () => setShown((s) => Math.min(s + 1, itemCount)),
+      intervalMs,
+    );
+    return () => clearTimeout(id);
+  }, [shown, itemCount, intervalMs, run]);
+  return shown;
+}
+
+// Loops an index 0..length-1 every `intervalMs` once `run` flips
+// true. Used by BrandRailMockup to cycle the active brand chip.
+// Reduced-motion users stay at index 0.
+
+export function useCycle(length: number, intervalMs: number, run: boolean): number {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (!run || length <= 1) return;
+    const reduce = typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) return;
+    const id = setInterval(() => setI((prev) => (prev + 1) % length), intervalMs);
+    return () => clearInterval(id);
+  }, [length, intervalMs, run]);
+  return i;
+}
+
 // Counts an integer up from 0 to `target` using requestAnimationFrame
 // with an ease-out cubic curve. Returns 0 until `run` flips true.
 // Used by the Stats row to animate "5", "60", "3", "100" once the

@@ -25,7 +25,7 @@ import {
   Zap,
 } from 'lucide-react';
 import type { ComponentType, SVGProps } from 'react';
-import { useCountUp, useReveal } from '@/lib/use-reveal';
+import { useCountUp, useCycle, useReveal, useStream } from '@/lib/use-reveal';
 
 export default function LandingClient() {
   return (
@@ -176,9 +176,25 @@ function Hero() {
   );
 }
 
+const HERO_MESSAGES: Array<{ side: 'left' | 'right'; ai?: boolean; text: string }> = [
+  { side: 'left',                text: "Hi! We're planning our wedding in Goa next December." },
+  { side: 'right', ai: true,     text: 'Lovely — congratulations! Goa is gorgeous in December. Roughly how many guests are you expecting?' },
+  { side: 'left',                text: 'Around 300, give or take.' },
+  { side: 'right', ai: true,     text: 'Got it. And do you have a venue in mind, or should our planners shortlist a few?' },
+  { side: 'left',                text: 'Please shortlist! Budget around 45L.' },
+];
+
 function InboxMockup() {
+  const { ref, revealed } = useReveal<HTMLDivElement>({ threshold: 0.2 });
+  // ~900ms between bubbles — feels like a real, slightly slow chat
+  // rather than a flipbook. The next-message-is-AI peek drives the
+  // "AI · drafting" indicator that fills the pause.
+  const shown = useStream(HERO_MESSAGES.length, 900, revealed);
+  const next = HERO_MESSAGES[shown];
+  const showTyping = shown < HERO_MESSAGES.length && next?.ai;
+
   return (
-    <div className="relative">
+    <div ref={ref} className="relative">
       <div className="absolute -inset-6 bg-gradient-to-br from-brand/20 via-brand-soft/30 to-transparent rounded-3xl blur-2xl" />
 
       <div className="relative rounded-2xl border border-border-default bg-elevated shadow-2xl overflow-hidden">
@@ -218,15 +234,12 @@ function InboxMockup() {
               </div>
             </div>
             <div className="flex-1 overflow-hidden p-3 space-y-2">
-              <MockBubble side="left">Hi! We&apos;re planning our wedding in Goa next December.</MockBubble>
-              <MockBubble side="right" ai>
-                Lovely — congratulations! Goa is gorgeous in December. Roughly how many guests are you expecting?
-              </MockBubble>
-              <MockBubble side="left">Around 300, give or take.</MockBubble>
-              <MockBubble side="right" ai>
-                Got it. And do you have a venue in mind, or should our planners shortlist a few?
-              </MockBubble>
-              <MockBubble side="left">Please shortlist! Budget around 45L.</MockBubble>
+              {HERO_MESSAGES.slice(0, shown).map((m, i) => (
+                <div key={i} className="bubble-in">
+                  <MockBubble side={m.side} ai={m.ai}>{m.text}</MockBubble>
+                </div>
+              ))}
+              {showTyping && <MockTypingIndicator />}
             </div>
             <div className="border-t border-border-default px-3 py-2 bg-elevated">
               <div className="h-7 rounded-full bg-canvas border border-border-default flex items-center px-3 text-[10px] text-text-muted">
@@ -235,6 +248,24 @@ function InboxMockup() {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Compact AI typing indicator used inside chat mockups. Mirrors the
+// real inbox's AiTypingIndicator but at mockup scale.
+function MockTypingIndicator() {
+  return (
+    <div className="flex justify-end bubble-in" aria-hidden>
+      <div className="bg-brand-soft/80 rounded-lg rounded-tr-sm px-2 py-1.5 inline-flex items-center gap-1">
+        <Sparkles className="w-2.5 h-2.5 text-brand" />
+        <span className="text-[8px] uppercase font-semibold text-brand tracking-wide">AI · drafting</span>
+        <span className="flex gap-0.5 ml-0.5">
+          <span className="w-0.5 h-0.5 rounded-full bg-brand animate-bounce" style={{ animationDelay: '0ms', animationDuration: '900ms' }} />
+          <span className="w-0.5 h-0.5 rounded-full bg-brand animate-bounce" style={{ animationDelay: '150ms', animationDuration: '900ms' }} />
+          <span className="w-0.5 h-0.5 rounded-full bg-brand animate-bounce" style={{ animationDelay: '300ms', animationDuration: '900ms' }} />
+        </span>
       </div>
     </div>
   );
@@ -349,127 +380,193 @@ function Spotlight({
 
 // ─── Spotlight visuals ─────────────────────────────────────────────────────
 
+const HINGLISH_MESSAGES: Array<{ ai?: boolean; human?: boolean; text: string }> = [
+  {                  text: 'Hi, mujhe apni shaadi plan karwani hai' },
+  { ai: true,        text: 'Hi! Bahut khushi hui aapka message dekh kar 🌸 Aapki shaadi kis city mein hold ho rahi hai?' },
+  {                  text: 'Delhi mein, December 2026' },
+  { ai: true,        text: 'Wonderful — Delhi December weddings are gorgeous! Aapne approximate budget range kya socha hai?' },
+  {                  text: 'Budget 25-30 lakhs around' },
+  { ai: true,        text: 'Got it — 25-30L range, Delhi, December 2026. Thank you! One of our wedding planners will reach out shortly with a customised plan.' },
+];
+
 function HinglishChatMockup() {
+  const { ref, revealed } = useReveal<HTMLDivElement>();
+  const shown = useStream(HINGLISH_MESSAGES.length, 850, revealed);
+  // The "Qualified" card slides in only after the last AI message,
+  // mirroring the real flow — qualification fires post-final reply.
+  const qualified = shown >= HINGLISH_MESSAGES.length;
   return (
-    <FloatingCard>
-      <BrowserChrome compact />
-      <div className="bg-warm chat-pattern p-4 space-y-2 min-h-[440px]">
-        <ChatLeft>Hi, mujhe apni shaadi plan karwani hai</ChatLeft>
-        <ChatRight ai>Hi! Bahut khushi hui aapka message dekh kar 🌸 Aapki shaadi kis city mein hold ho rahi hai?</ChatRight>
-        <ChatLeft>Delhi mein, December 2026</ChatLeft>
-        <ChatRight ai>Wonderful — Delhi December weddings are gorgeous! Aapne approximate budget range kya socha hai?</ChatRight>
-        <ChatLeft>Budget 25-30 lakhs around</ChatLeft>
-        <ChatRight ai>Got it — 25-30L range, Delhi, December 2026. Thank you! One of our wedding planners will reach out shortly with a customised plan.</ChatRight>
-        <div className="mt-3 rounded-md border border-success/30 bg-success-soft px-3 py-2 text-[11px] flex items-center gap-2">
-          <Check className="w-3.5 h-3.5 text-success flex-shrink-0" aria-hidden />
-          <div>
-            <div className="font-semibold text-success">Qualified · routed to human queue</div>
-            <div className="text-text-secondary mt-0.5">City · Delhi  ·  Event · Dec 2026  ·  Budget · ₹25-30L</div>
-          </div>
+    <div ref={ref}>
+      <FloatingCard>
+        <BrowserChrome compact />
+        <div className="bg-warm chat-pattern p-4 space-y-2 min-h-[440px]">
+          {HINGLISH_MESSAGES.slice(0, shown).map((m, i) => (
+            <div key={i} className="bubble-in">
+              {m.ai ? <ChatRight ai>{m.text}</ChatRight> : <ChatLeft>{m.text}</ChatLeft>}
+            </div>
+          ))}
+          {qualified && (
+            <div className="mt-3 rounded-md border border-success/30 bg-success-soft px-3 py-2 text-[11px] flex items-center gap-2 bubble-in">
+              <Check className="w-3.5 h-3.5 text-success flex-shrink-0" aria-hidden />
+              <div>
+                <div className="font-semibold text-success">Qualified · routed to human queue</div>
+                <div className="text-text-secondary mt-0.5">City · Delhi  ·  Event · Dec 2026  ·  Budget · ₹25-30L</div>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
-    </FloatingCard>
+      </FloatingCard>
+    </div>
   );
 }
+
+const HANDOFF_MESSAGES: Array<{ human?: boolean; text: string }> = [
+  {              text: 'Can you share approximate pricing for full planning + decor?' },
+  { human: true, text: 'Hi Mehak! Sharing a personalised plan now — one moment 🌸' },
+  {              text: 'Sure, take your time!' },
+];
 
 function HandoffMockup() {
+  const { ref, revealed } = useReveal<HTMLDivElement>();
+  const shown = useStream(HANDOFF_MESSAGES.length, 800, revealed);
+  // Suggested-reply card lands after the last lead message and pulses
+  // a brand-color halo twice — the "AI just dropped a draft" beat.
+  const suggested = shown >= HANDOFF_MESSAGES.length;
   return (
-    <FloatingCard>
-      <div className="bg-elevated">
-        <div className="px-4 py-3 border-b border-border-default flex items-center justify-between">
-          <div>
-            <div className="text-sm font-semibold inline-flex items-center gap-1">
-              Mehak Khanna
-              <Flame className="w-3.5 h-3.5 text-danger" fill="currentColor" aria-hidden />
+    <div ref={ref}>
+      <FloatingCard>
+        <div className="bg-elevated">
+          <div className="px-4 py-3 border-b border-border-default flex items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold inline-flex items-center gap-1">
+                Mehak Khanna
+                <Flame className="w-3.5 h-3.5 text-danger" fill="currentColor" aria-hidden />
+              </div>
+              <div className="text-[10px] text-text-secondary">+91 98••• ••204 · returning · last active 8m ago</div>
             </div>
-            <div className="text-[10px] text-text-secondary">+91 98••• ••204 · returning · last active 8m ago</div>
-          </div>
-          <div className="flex items-center gap-0.5 rounded-full bg-muted p-0.5 text-[10px]">
-            <span className="px-2.5 py-1 text-text-muted">AI</span>
-            <span className="px-2.5 py-1 rounded-full bg-elevated font-semibold shadow-sm">Human</span>
-          </div>
-        </div>
-
-        <div className="px-4 py-2.5 bg-canvas border-b border-border-default flex items-center gap-2 flex-wrap text-[10px]">
-          <Pill icon={MapPin}   label="City"   value="Mumbai" />
-          <Pill icon={Calendar} label="Event"  value="Feb 2027" />
-          <Pill icon={Users}    label="Guests" value="350" />
-          <Pill icon={Wallet}   label="Budget" value="₹60L+" />
-        </div>
-
-        <div className="bg-warm chat-pattern p-4 space-y-2 min-h-[260px]">
-          <ChatLeft>Can you share approximate pricing for full planning + decor?</ChatLeft>
-          <ChatRight human>Hi Mehak! Sharing a personalised plan now — one moment 🌸</ChatRight>
-          <ChatLeft>Sure, take your time!</ChatLeft>
-
-          <div className="mt-3 rounded-lg border border-brand/30 bg-brand-soft/50 px-3 py-2">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-brand inline-flex items-center gap-1">
-                <Sparkles className="w-3 h-3" aria-hidden /> Suggested reply
-              </span>
-              <span className="text-[9px] text-text-muted">drafted by AI</span>
-            </div>
-            <p className="text-[11px] text-text-default leading-relaxed">
-              For Mumbai full planning + decor at the 60L+ tier, we typically put together a custom package across venue,
-              catering, decor, and on-site coordination. I&apos;ll WhatsApp you a one-pager in the next hour with a clearer
-              breakdown — sound good?
-            </p>
-            <div className="flex items-center gap-1.5 mt-2">
-              <button className="text-[10px] bg-brand text-text-inverse px-2 py-1 rounded">Use draft</button>
-              <button className="text-[10px] text-text-secondary px-2 py-1">Edit</button>
-              <button className="text-[10px] text-text-secondary px-2 py-1">Dismiss</button>
+            <div className="flex items-center gap-0.5 rounded-full bg-muted p-0.5 text-[10px]">
+              <span className="px-2.5 py-1 text-text-muted">AI</span>
+              <span className="px-2.5 py-1 rounded-full bg-elevated font-semibold shadow-sm">Human</span>
             </div>
           </div>
+
+          <div className="px-4 py-2.5 bg-canvas border-b border-border-default flex items-center gap-2 flex-wrap text-[10px]">
+            <Pill icon={MapPin}   label="City"   value="Mumbai" />
+            <Pill icon={Calendar} label="Event"  value="Feb 2027" />
+            <Pill icon={Users}    label="Guests" value="350" />
+            <Pill icon={Wallet}   label="Budget" value="₹60L+" />
+          </div>
+
+          <div className="bg-warm chat-pattern p-4 space-y-2 min-h-[260px]">
+            {HANDOFF_MESSAGES.slice(0, shown).map((m, i) => (
+              <div key={i} className="bubble-in">
+                {m.human ? <ChatRight human>{m.text}</ChatRight> : <ChatLeft>{m.text}</ChatLeft>}
+              </div>
+            ))}
+
+            {suggested && (
+              <div className="mt-3 rounded-lg border border-brand/30 bg-brand-soft/50 px-3 py-2 bubble-in brand-glow">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-brand inline-flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" aria-hidden /> Suggested reply
+                  </span>
+                  <span className="text-[9px] text-text-muted">drafted by AI</span>
+                </div>
+                <p className="text-[11px] text-text-default leading-relaxed">
+                  For Mumbai full planning + decor at the 60L+ tier, we typically put together a custom package across venue,
+                  catering, decor, and on-site coordination. I&apos;ll WhatsApp you a one-pager in the next hour with a clearer
+                  breakdown — sound good?
+                </p>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <button className="text-[10px] bg-brand text-text-inverse px-2 py-1 rounded">Use draft</button>
+                  <button className="text-[10px] text-text-secondary px-2 py-1">Edit</button>
+                  <button className="text-[10px] text-text-secondary px-2 py-1">Dismiss</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </FloatingCard>
+      </FloatingCard>
+    </div>
   );
 }
 
-function BrandRailMockup() {
-  return (
-    <FloatingCard>
-      <div className="bg-inverse p-6 flex items-start gap-6 min-h-[440px]">
-        {/* Big brand rail */}
-        <div className="flex flex-col items-center gap-2">
-          <div className="text-[9px] uppercase tracking-wide text-white/40 mb-1">Brands</div>
-          <BigBrandChip color="#7c3aed" label="TBS" name="The Bride Side" active />
-          <BigBrandChip color="#ec4899" label="RD" name="Revaah Decor" />
-          <BigBrandChip color="#0ea5e9" label="VL" name="VenueList" />
-          <BigBrandChip color="#10b981" label="CT" name="Catering Co" />
-          <BigBrandChip logo label="" name="Logo brand" />
-          <div className="w-12 h-12 rounded-lg border-2 border-dashed border-white/20 flex items-center justify-center text-white/40 text-lg">+</div>
-        </div>
+const BRANDS: Array<{
+  color: string;
+  label: string;
+  name: string;
+  mode: 'AI' | 'Human';
+  pipeline: string;
+  stage: string;
+  modeTone: 'success' | 'warning';
+}> = [
+  { color: '#7c3aed', label: 'TBS', name: 'The Bride Side', mode: 'AI',    pipeline: '#67 Planning',  stage: 'Lead In',     modeTone: 'success' },
+  { color: '#ec4899', label: 'RD',  name: 'Revaah Decor',   mode: 'Human', pipeline: '#58 Decor',     stage: 'New Inquiry', modeTone: 'warning' },
+  { color: '#0ea5e9', label: 'VL',  name: 'VenueList',      mode: 'AI',    pipeline: '#42 Venues',    stage: 'Inquiry',     modeTone: 'success' },
+  { color: '#10b981', label: 'CT',  name: 'Catering Co',    mode: 'AI',    pipeline: '#71 Catering',  stage: 'Lead In',     modeTone: 'success' },
+];
 
-        <div className="flex-1 space-y-3">
-          <div className="rounded-lg bg-elevated p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 rounded-full bg-success" />
-              <span className="text-[11px] font-semibold text-text-primary">The Bride Side · WhatsApp</span>
-            </div>
-            <div className="text-[10px] text-text-secondary leading-relaxed">
-              Default mode: <span className="text-text-default font-medium">AI</span>  ·
-              Pipeline: <span className="text-text-default font-medium">#67 Planning</span>  ·
-              Initial stage: <span className="text-text-default font-medium">Lead In</span>
-            </div>
+function BrandRailMockup() {
+  const { ref, revealed } = useReveal<HTMLDivElement>();
+  // Cycle through brands every 3.2s once the mockup scrolls into
+  // view. The active chip on the rail and the headline config card
+  // below both update from the same index.
+  const i = useCycle(BRANDS.length, 3200, revealed);
+  const active = BRANDS[i];
+  const dotTone = active.modeTone === 'success' ? 'bg-success' : 'bg-warning';
+  const modeTextTone = active.modeTone === 'success' ? 'text-text-default' : 'text-warning';
+  return (
+    <div ref={ref}>
+      <FloatingCard>
+        <div className="bg-inverse p-6 flex items-start gap-6 min-h-[440px]">
+          {/* Big brand rail */}
+          <div className="flex flex-col items-center gap-2">
+            <div className="text-[9px] uppercase tracking-wide text-white/40 mb-1">Brands</div>
+            {BRANDS.map((b, idx) => (
+              <BigBrandChip
+                key={b.label}
+                color={b.color}
+                label={b.label}
+                name={b.name}
+                active={idx === i}
+              />
+            ))}
+            <BigBrandChip logo label="" name="Logo brand" />
+            <div className="w-12 h-12 rounded-lg border-2 border-dashed border-white/20 flex items-center justify-center text-white/40 text-lg">+</div>
           </div>
-          <div className="rounded-lg bg-elevated p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 rounded-full bg-warning" />
-              <span className="text-[11px] font-semibold text-text-primary">Revaah Decor · WhatsApp</span>
+
+          <div className="flex-1 space-y-3">
+            {/* Active brand — keyed so React remounts on cycle,
+                triggering the bubble-in entrance animation. */}
+            <div key={active.label} className="rounded-lg bg-elevated p-4 bubble-in">
+              <div className="flex items-center gap-2 mb-2">
+                <div className={`w-2 h-2 rounded-full ${dotTone}`} />
+                <span className="text-[11px] font-semibold text-text-primary">{active.name} · WhatsApp</span>
+              </div>
+              <div className="text-[10px] text-text-secondary leading-relaxed">
+                Default mode: <span className={`${modeTextTone} font-medium`}>{active.mode}</span>  ·
+                Pipeline: <span className="text-text-default font-medium">{active.pipeline}</span>  ·
+                Initial stage: <span className="text-text-default font-medium">{active.stage}</span>
+              </div>
             </div>
-            <div className="text-[10px] text-text-secondary leading-relaxed">
-              Default mode: <span className="text-warning font-medium">Human</span>  ·
-              Pipeline: <span className="text-text-default font-medium">#58 Decor</span>  ·
-              Initial stage: <span className="text-text-default font-medium">New Inquiry</span>
+            <div className="rounded-lg border border-white/10 px-4 py-3 text-[10px] text-white/60 leading-relaxed">
+              Each brand has its own AI system prompt, default conversation mode, and visual identity. Admins configure all of it from the Pipelines tab.
             </div>
-          </div>
-          <div className="rounded-lg border border-white/10 px-4 py-3 text-[10px] text-white/60 leading-relaxed">
-            Each brand has its own AI system prompt, default conversation mode, and visual identity. Admins configure all of it from the Pipelines tab.
+            <div className="flex items-center gap-1 pt-1">
+              {BRANDS.map((_, idx) => (
+                <span
+                  key={idx}
+                  className={`h-1 rounded-full transition-all duration-300 ${
+                    idx === i ? 'w-6 bg-white/70' : 'w-1 bg-white/20'
+                  }`}
+                  aria-hidden
+                />
+              ))}
+            </div>
           </div>
         </div>
-      </div>
-    </FloatingCard>
+      </FloatingCard>
+    </div>
   );
 }
 
