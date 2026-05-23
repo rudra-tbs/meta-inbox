@@ -105,6 +105,84 @@ function FailedFooter({ message, onRetry }: { message: Message; onRetry?: () => 
   );
 }
 
+// Thumbs up/down feedback control rendered under AI bubbles. Stores
+// the result in ai_message_feedback so admins can later spot poor
+// replies for prompt tuning. Optimistic: the icon state flips
+// immediately, rolls back if the API call fails.
+function AIFeedbackControl({ message }: { message: Message }) {
+  const [rating, setRating] = useState<'up' | 'down' | null>(message.feedback_rating ?? null);
+  const [busy, setBusy] = useState(false);
+
+  async function setRatingOptimistic(next: 'up' | 'down' | null) {
+    const prev = rating;
+    if (next === prev) return; // no-op click
+    setBusy(true);
+    setRating(next);
+    try {
+      if (next === null) {
+        const res = await fetch(`/api/messages/${message.id}/feedback`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('clear failed');
+      } else {
+        const res = await fetch(`/api/messages/${message.id}/feedback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rating: next }),
+        });
+        if (!res.ok) throw new Error('rate failed');
+      }
+      // Light confirmation toasts — they're cheap signal that the
+      // click registered, and the rating affects nothing visible
+      // beyond the button itself.
+      if (next === 'up') toast.success('Thanks — marked helpful');
+      else if (next === 'down') toast.success('Noted — admins will see this for prompt tuning');
+      else toast.success('Rating cleared');
+    } catch {
+      setRating(prev);
+      toast.error('Could not save rating');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 ml-1.5 text-[12px]"
+      // The whole control sits in the timestamp row; clicks shouldn't
+      // bubble up to anything in the bubble that might be clickable.
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => setRatingOptimistic(rating === 'up' ? null : 'up')}
+        aria-label={rating === 'up' ? 'Remove helpful rating' : 'Mark this reply as helpful'}
+        aria-pressed={rating === 'up'}
+        className={`inline-flex items-center justify-center w-5 h-5 rounded transition-colors disabled:opacity-50 ${
+          rating === 'up'
+            ? 'text-success'
+            : 'text-text-muted hover:text-text-secondary'
+        }`}
+      >
+        <span aria-hidden>{rating === 'up' ? '👍' : '👍'}</span>
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => setRatingOptimistic(rating === 'down' ? null : 'down')}
+        aria-label={rating === 'down' ? 'Remove not-helpful rating' : 'Mark this reply as not helpful'}
+        aria-pressed={rating === 'down'}
+        className={`inline-flex items-center justify-center w-5 h-5 rounded transition-colors disabled:opacity-50 ${
+          rating === 'down'
+            ? 'text-danger'
+            : 'text-text-muted hover:text-text-secondary'
+        }`}
+      >
+        <span aria-hidden>👎</span>
+      </button>
+    </span>
+  );
+}
+
 // Wraps a failed outbound bubble so the whole thing is one tap target.
 // Hover shows the underlying Meta error via `title`. Keyboard-accessible.
 function FailedBubbleClickable({
@@ -179,6 +257,7 @@ export default function MessageBubble({ message, contactName, showChannel, onRet
             <span className="text-text-secondary">✨</span>
             <span>AI · {formatTime(message.created_at)}</span>
             <ReadStatus message={message} />
+            {!isFailed && <AIFeedbackControl message={message} />}
           </p>
           {isFailed && <FailedFooter message={message} onRetry={onRetry} />}
         </div>

@@ -48,10 +48,15 @@ export async function GET(
 
   // Pull the most-recent `limit` messages (descending), then reverse for the UI
   // which renders oldest-first. Cursor pagination uses created_at desc + id
-  // as a tiebreak via the composite index.
+  // as a tiebreak via the composite index. LEFT JOIN ai_message_feedback so
+  // the MessageBubble knows up-front whether an AI message has been rated.
   let query = supabase
     .from('messages')
-    .select(`*, sender_user:users!sender_user_id(name)`)
+    .select(`
+      *,
+      sender_user:users!sender_user_id(name),
+      feedback:ai_message_feedback!message_id(rating, reason)
+    `)
     .eq('conversation_id', params.id)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -64,11 +69,18 @@ export async function GET(
   const result = (messages ?? [])
     .map((m) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const senderUser = (m as any).sender_user;
+      const row = m as any;
+      const senderUser = row.sender_user;
+      // PostgREST returns embedded rows as an array even for a 1:1 FK.
+      // Take the first; if no feedback row exists, both fields stay null.
+      const feedback = Array.isArray(row.feedback) ? row.feedback[0] : row.feedback;
       return {
-        ...m,
+        ...row,
         sender_user: undefined,
+        feedback: undefined,
         sender_name: senderUser?.name ?? null,
+        feedback_rating: feedback?.rating ?? null,
+        feedback_reason: feedback?.reason ?? null,
       };
     })
     .reverse();
