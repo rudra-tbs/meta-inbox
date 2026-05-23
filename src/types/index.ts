@@ -136,6 +136,11 @@ export interface Message {
   read_at: string | null;
   created_at: string;
   sender_name?: string | null;
+  // Per-AI-message feedback. Populated by /api/conversations/[id]/messages
+  // via a LEFT JOIN on ai_message_feedback. Only meaningful for AI
+  // messages; LEAD/HUMAN messages will always have these null.
+  feedback_rating?: 'up' | 'down' | null;
+  feedback_reason?: string | null;
   // Populated only in cross-channel views (e.g. /api/contacts/[id]/messages)
   channel?: Channel | null;
   brand?: Brand | null;
