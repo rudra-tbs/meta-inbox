@@ -33,6 +33,15 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   const [activeChannel, setActiveChannel] = useState<ChannelView>('WA');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Deep-link target from ?conv=… in the URL (System tab failed-send
+  // rows link here so an admin can jump straight to the failing
+  // conversation). Cleared once the brand has been switched and the
+  // conversation is selected.
+  const [pendingConvSelect, setPendingConvSelect] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('conv');
+  });
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [stageFilter, setStageFilter] = useState<number | null>(null);
@@ -290,6 +299,44 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
   useEffect(() => {
     if (!loadingConvs) initialLoadDoneRef.current = true;
   }, [loadingConvs]);
+
+  // Resolve ?conv=<id> deep-links. If the target is already in the
+  // current view, select it. Otherwise fetch the conversation row,
+  // switch active brand to its brand, and let the next conversations
+  // refresh pull it into view. Cleared after first successful select
+  // so subsequent navigation isn't pinned to the URL.
+  useEffect(() => {
+    if (!pendingConvSelect) return;
+    const inList = conversations.find((c) => c.id === pendingConvSelect);
+    if (inList) {
+      setSelectedId(pendingConvSelect);
+      setPendingConvSelect(null);
+      return;
+    }
+    // Not in the current list — fetch to find its brand.
+    let cancelled = false;
+    fetch(`/api/conversations/${pendingConvSelect}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((conv) => {
+        if (cancelled || !conv) return;
+        if (conv.brand && conv.brand !== activeBrand) {
+          setActiveBrand(conv.brand);
+          try { window.localStorage.setItem(ACTIVE_BRAND_STORAGE_KEY, conv.brand); } catch {}
+          // The conversations fetch will re-run for the new brand; once
+          // it lands, the inList check above will succeed on the next
+          // pass and select it. Keep pendingConvSelect until then.
+        } else {
+          // Same brand, just not loaded yet (filter exclusion). Drop
+          // the filters so the conversation surfaces.
+          setStatusFilter('all');
+          setTagFilter(null);
+          setStageFilter(null);
+        }
+      })
+      .catch(() => { setPendingConvSelect(null); });
+    return () => { cancelled = true; };
+    // Re-run when conversations refresh (e.g. after a brand switch).
+  }, [pendingConvSelect, conversations, activeBrand]);
 
   useEffect(() => {
     const supabase = getSupabaseBrowser();
@@ -740,9 +787,9 @@ export default function InboxClient({ currentUser }: InboxClientProps) {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
                 </svg>
               </div>
-              <p className="text-sm font-medium text-text-primary">Select a conversation</p>
+              <p className="text-sm font-medium text-text-primary">Pick a thread to dive in</p>
               <p className="text-[12px] text-text-secondary mt-1 leading-snug">
-                Pick one from the sidebar to read history and reply.
+                Tap any conversation in the sidebar to read history, toggle AI / Human, or reply. The shortcuts below also work.
               </p>
               <div className="mt-5 hidden md:inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-text-muted">
                 <span><kbd className="px-1 py-0.5 bg-muted rounded text-text-secondary">⌘K</kbd> palette</span>

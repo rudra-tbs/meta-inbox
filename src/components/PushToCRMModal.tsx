@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Conversation, Message, AppUser } from '@/types';
+import { useFocusTrap } from '@/lib/use-focus-trap';
 
 interface CRMUser {
   id: number;
@@ -157,14 +158,30 @@ export default function PushToCRMModal({
     }
   }
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, { onEscape: onClose });
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-elevated rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col border border-border-default">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        ref={dialogRef}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="push-to-crm-title"
+        tabIndex={-1}
+        className="bg-elevated rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col border border-border-default focus:outline-none"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border-default">
-          <h2 className="text-base font-semibold text-text-primary">Push to CRM</h2>
+          <h2 id="push-to-crm-title" className="text-base font-semibold text-text-primary">Push to CRM</h2>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="text-text-muted hover:text-text-primary text-xl leading-none"
           >
             ×

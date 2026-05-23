@@ -234,24 +234,24 @@ function EmptyConversations({
         <>
           <p className="text-sm font-medium text-text-primary">No brands assigned yet</p>
           <p className="text-[12px] text-text-secondary mt-1 leading-snug max-w-[220px]">
-            Ask an admin to grant you access — they can do it from <strong>/admin → Users</strong>.
+            An admin needs to grant you access from <strong>/admin → Users</strong> before conversations show up here.
           </p>
         </>
       ) : filtered ? (
         <>
-          <p className="text-sm font-medium text-text-primary">No conversations match</p>
-          <p className="text-[12px] text-text-secondary mt-1 leading-snug">
-            Clear the search or filter to see all conversations.
+          <p className="text-sm font-medium text-text-primary">Nothing matches that filter</p>
+          <p className="text-[12px] text-text-secondary mt-1 leading-snug max-w-[220px]">
+            Tweak the search box or clear the active filter pill and the full list comes back.
           </p>
         </>
       ) : (
         <>
-          <p className="text-sm font-medium text-text-primary">Waiting for first message</p>
+          <p className="text-sm font-medium text-text-primary">Quiet so far</p>
           <p className="text-[12px] text-text-secondary mt-1 leading-snug max-w-[240px]">
             {activeChannelLabel ? (
-              <>Send a test message to <strong className="text-text-primary">{activeChannelLabel}</strong> to verify the webhook is wired up. New conversations land here.</>
+              <>WhatsApp the test number for <strong className="text-text-primary">{activeChannelLabel}</strong> from your phone to confirm the webhook is wired. The conversation will land here within a second.</>
             ) : (
-              <>When a lead messages your connected number, the conversation lands here.</>
+              <>Once an inbound message hits the connected number, it lands here in real time. No refresh needed.</>
             )}
           </p>
           <a

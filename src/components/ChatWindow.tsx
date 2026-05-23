@@ -330,9 +330,12 @@ export default function ChatWindow({
               variant="icon"
               onClick={() => setShowSnoozeMenu((v) => !v)}
               title={isSnoozed ? `Snoozed until ${new Date(conversation.snoozed_until!).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}` : 'Snooze'}
+              aria-label={isSnoozed ? 'Snoozed — open snooze menu' : 'Snooze conversation'}
+              aria-haspopup="menu"
+              aria-expanded={showSnoozeMenu}
               className={isSnoozed ? 'bg-snooze-soft text-snooze border-snooze/20' : ''}
             >
-              💤
+              <span aria-hidden>💤</span>
             </Button>
             {showSnoozeMenu && (
               <div className="absolute top-full right-0 mt-1 bg-elevated border border-border-default rounded-lg shadow-lg z-10 py-1 min-w-[200px]">
@@ -406,9 +409,11 @@ export default function ChatWindow({
             variant="icon"
             onClick={() => setShowDetail((v) => !v)}
             title="Details"
+            aria-label={showDetail ? 'Close details panel' : 'Open details panel'}
+            aria-expanded={showDetail}
             className={showDetail ? 'bg-canvas border-border-strong text-text-primary' : ''}
           >
-            ⋯
+            <span aria-hidden>⋯</span>
           </Button>
           {conversation.pushed_to_crm ? (
             <span className="inline-flex items-center gap-1.5 text-[11px] text-success font-medium ml-1" title={`Deal #${conversation.crm_deal_id}${conversation.crm_stage_name ? ` · ${conversation.crm_stage_name}` : ''}`}>
