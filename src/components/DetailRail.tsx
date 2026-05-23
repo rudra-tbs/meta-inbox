@@ -703,6 +703,24 @@ export default function DetailRail({ conversation, open, onClose, onConversation
         </Section>
       )}
 
+      {/* Export — small footer above Activity so power-users can hand
+          the whole conversation off to a planner who doesn't have
+          inbox access. Anchor tag with download so the file lands
+          directly without a fetch round-trip in JS. */}
+      <Section title="Export">
+        <a
+          href={`/api/conversations/${conversation.id}/export`}
+          download
+          className="inline-flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-default"
+        >
+          <span aria-hidden>↓</span>
+          Download as Markdown
+        </a>
+        <p className="text-[10px] text-text-muted mt-1.5">
+          Includes messages, lead info, CRM linkage, and the activity log. Paste into any doc, or print → save as PDF.
+        </p>
+      </Section>
+
       {/* Activity */}
       <Section title="Activity">
         {events.length === 0 ? (
