@@ -265,10 +265,10 @@ export default function BulkActionBar({ selectedConversations, onClear, onDone }
         <button
           onClick={onClear}
           title="Clear selection"
-          className="ml-1 w-6 h-6 inline-flex items-center justify-center text-text-muted hover:text-text-primary rounded hover:bg-canvas"
           aria-label="Clear selection"
+          className="ml-1 w-9 h-9 md:w-7 md:h-7 inline-flex items-center justify-center text-text-muted hover:text-text-primary rounded hover:bg-canvas text-base md:text-sm"
         >
-          ×
+          <span aria-hidden>×</span>
         </button>
       </div>
     </div>
@@ -291,7 +291,10 @@ function BarButton({
       onClick={onClick}
       disabled={busy}
       title={title}
-      className="px-2 py-1 text-[11px] font-medium text-text-default border border-border-default rounded hover:bg-canvas disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      // Larger padding on touch widths so the bar isn't a row of 24px
+      // micro-targets. min-h-9 guarantees ~36px height on mobile while
+      // staying compact on desktop.
+      className="px-3 py-2 md:px-2 md:py-1 text-[12px] md:text-[11px] font-medium text-text-default border border-border-default rounded hover:bg-canvas disabled:opacity-50 disabled:cursor-not-allowed transition-colors min-h-9 md:min-h-0"
     >
       {busy ? '…' : label}
     </button>

@@ -492,14 +492,26 @@ export default function DetailRail({ conversation, open, onClose, onConversation
           border-l border-border-default bg-elevated overflow-y-auto flex-shrink-0
         "
       >
-      <div className="sticky top-0 bg-elevated/95 backdrop-blur px-5 py-3 border-b border-border-default flex items-center justify-between z-10">
+      <div className="sticky top-0 bg-elevated/95 backdrop-blur px-3 py-2.5 md:px-5 md:py-3 border-b border-border-default flex items-center justify-between gap-2 z-10">
+        {/* On mobile, a labeled back affordance is much clearer than a
+            lone × in the corner — operators consistently miss the
+            top-right close target with their thumb. Desktop keeps the
+            ×-only chrome since the rail is statically docked. */}
+        <button
+          onClick={onClose}
+          aria-label="Back to chat"
+          className="md:hidden inline-flex items-center gap-1.5 -ml-1 px-2 h-11 text-sm font-medium text-text-primary hover:text-brand active:text-brand"
+        >
+          <span aria-hidden className="text-base leading-none">←</span>
+          Back
+        </button>
         <h2 className="text-sm font-semibold text-text-primary">Details</h2>
         <button
           onClick={onClose}
-          className="text-text-muted hover:text-text-default w-7 h-7 inline-flex items-center justify-center rounded hover:bg-canvas"
           aria-label="Close panel"
+          className="text-text-muted hover:text-text-default w-11 h-11 md:w-7 md:h-7 inline-flex items-center justify-center rounded hover:bg-canvas text-xl md:text-base"
         >
-          ×
+          <span aria-hidden>×</span>
         </button>
       </div>
 
