@@ -1,11 +1,19 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Contact, Brand } from '@/types';
 
+// Canonical form: full E.164 without the leading '+', matching what Meta
+// sends in webhook payloads and what the WhatsApp Cloud API accepts on send.
+// Indian mobile numbers given without a country code (10 digits starting
+// 6–9) are upgraded to the 12-digit form so contact lookups match across
+// inbound (always 12-digit from Meta) and LLM-extracted phones (which may
+// arrive bare). Other-country numbers pass through as-is.
 function normalizePhone(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const digits = raw.replace(/\D/g, '');
-  if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
-  return digits || null;
+  if (!digits) return null;
+  if (digits.length === 12 && digits.startsWith('91')) return digits;
+  if (digits.length === 10 && /^[6-9]/.test(digits)) return '91' + digits;
+  return digits;
 }
 
 function normalizeInstagramHandle(raw: string | null | undefined): string | null {
