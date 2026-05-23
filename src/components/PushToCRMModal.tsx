@@ -34,10 +34,26 @@ interface PushToCRMModalProps {
   onClose: () => void;
 }
 
+// Parse Indian budget notation into a rupee amount string. Leads write
+// "50L", "5 crore", "₹2.5 lakhs", "10,00,000" — the old implementation
+// took the first integer it saw and sent "50" to a DECIMAL(15,2) CRM
+// column, so every pushed deal was off by a factor of 100,000 or worse.
+//
+// Returns a base-10 integer string so the existing `Number(budget)`
+// conversion at submit time keeps working unchanged. Empty string when
+// the input is missing or has no parseable leading number.
 function parseBudget(raw: string | null): string {
   if (!raw) return '';
-  const match = raw.match(/\d+/);
-  return match ? match[0] : '';
+  const s = raw.toLowerCase().replace(/[,₹$\s]/g, '');
+  const match = s.match(/^([\d.]+)/);
+  if (!match) return '';
+  const num = parseFloat(match[1]);
+  if (!isFinite(num)) return '';
+  const suffix = s.slice(match[1].length);
+  if (/^(crore|crores|cr)/.test(suffix)) return String(Math.round(num * 10_000_000));
+  if (/^(lakhs?|lac|l)/.test(suffix)) return String(Math.round(num * 100_000));
+  if (/^k/.test(suffix)) return String(Math.round(num * 1_000));
+  return String(Math.round(num));
 }
 
 function parseWeddingDate(raw: string | null): string {
