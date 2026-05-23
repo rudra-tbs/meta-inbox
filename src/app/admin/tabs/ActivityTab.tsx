@@ -34,6 +34,7 @@ const EVENT_LABELS: Record<string, string> = {
   PIPELINE_UNMAPPED: 'Cleared pipeline mapping',
   BRAND_CONTEXT_UPDATED: 'Updated brand context',
   BRAND_CONTEXT_DELETED: 'Removed brand context',
+  BRAND_SETTINGS_CASCADED: 'Cleared brand settings (last channel removed)',
   TEMPLATE_CREATED: 'Created template',
   TEMPLATE_UPDATED: 'Updated template',
   TEMPLATE_DELETED: 'Deleted template',
@@ -44,6 +45,7 @@ const TARGET_TONE: Record<string, string> = {
   channel: 'bg-success-soft text-success border-success/20',
   brand_pipeline: 'bg-warning-soft text-warning border-warning/20',
   brand_context: 'bg-canvas text-text-secondary border-border-default',
+  brand_setting: 'bg-canvas text-text-secondary border-border-default',
   reply_template: 'bg-canvas text-text-default border-border-default',
 };
 
@@ -90,6 +92,8 @@ function describe(event: AdminEvent): string {
       return `${m.length ?? 0} chars`;
     case 'BRAND_CONTEXT_DELETED':
       return '—';
+    case 'BRAND_SETTINGS_CASCADED':
+      return `brand ${m.brand}`;
     case 'TEMPLATE_CREATED':
     case 'TEMPLATE_UPDATED':
     case 'TEMPLATE_DELETED':

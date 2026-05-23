@@ -148,5 +148,41 @@ export async function DELETE(
     display_name: prev?.display_name,
   });
 
-  return NextResponse.json({ ok: true });
+  // Cascade: if this was the last channel for the brand, clear the
+  // brand_settings row. Without any live channels the brand has no
+  // way to send or receive messages, so leaving a "configured" card
+  // in the Pipelines tab is misleading. Operator can re-establish
+  // settings by reconnecting a channel later.
+  let cascadedSettings = false;
+  if (prev?.brand) {
+    const { data: remaining, error: remainingErr } = await supabase
+      .from('brand_channels')
+      .select('id')
+      .eq('brand', prev.brand)
+      .limit(1);
+    if (!remainingErr && (!remaining || remaining.length === 0)) {
+      const { error: settingsErr } = await supabase
+        .from('brand_settings')
+        .delete()
+        .eq('brand', prev.brand);
+      if (!settingsErr) {
+        cascadedSettings = true;
+        await logAdminEvent(
+          supabase,
+          admin,
+          'BRAND_SETTINGS_CASCADED',
+          'brand_setting',
+          String(prev.brand),
+          { brand: prev.brand, reason: 'last_channel_disconnected' },
+        );
+      } else {
+        // Don't fail the request — the channel is already gone. Just
+        // log so the orphaned brand_settings row can be cleaned up
+        // manually.
+        console.error('[brand-channels] cascade brand_settings delete failed:', settingsErr);
+      }
+    }
+  }
+
+  return NextResponse.json({ ok: true, cascadedSettings });
 }
