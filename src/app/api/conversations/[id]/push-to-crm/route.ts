@@ -145,15 +145,20 @@ export async function POST(
   let pipeline_id: number | null = null;
   let stage_id: number | null = null;
 
-  // 1. brand_settings (new canonical home for initial_stage_id).
+  // 1. brand_settings (new canonical home for initial_stage_id and the
+  // per-brand CRM category id). crm_category_id is read here so we can
+  // pass it into the deal INSERT below; null leaves category_id unset on
+  // the deal, preserving legacy behaviour for brands that haven't been
+  // configured yet.
   const { data: settings } = await supabase
     .from('brand_settings')
-    .select('initial_stage_id')
+    .select('initial_stage_id, crm_category_id')
     .eq('brand', String(conv.brand))
     .maybeSingle();
   if (settings?.initial_stage_id) {
     stage_id = settings.initial_stage_id as number;
   }
+  const crmCategoryId: number | null = (settings?.crm_category_id as number | null | undefined) ?? null;
 
   // 2. brand_pipelines — silent legacy fallback. If the table has been
   //    dropped by the SQL migration, Supabase returns an error and `data`
@@ -340,30 +345,48 @@ export async function POST(
   // tbs_service_type / interested_in_planning / interested_in_decor) used to
   // be written here; they were dropped when brands became pipeline-driven.
   // Planners fill in pipeline-specific fields from the CRM after handoff.
-  // Schema-aligned deal INSERT. Five things that the previous version got
-  // wrong against the actual thebrideside.deals schema:
-  //   1. contact_number (varchar(20) NOT NULL) — was missing.
-  //   2. value         (decimal(12,2) NOT NULL) — was missing. CRM convention
-  //      is 0.00 for unbooked leads; planners fill the real value during
-  //      negotiation.
-  //   3. status        — used to send 'ACTIVE' which isn't in the enum
-  //      {WON, LOST, IN_PROGRESS}. New leads → 'IN_PROGRESS'.
-  //   4. created_by    — enum {USER, BOT}; previously we accidentally pushed
-  //      the numeric CRM user id into this column. The user id goes into
-  //      created_by_user_id, which is correct here.
-  //   5. deal_owner_override (bit(1) NOT NULL, no default) — was missing.
+  //
+  // Schema-aligned deal INSERT. Notes on the actual thebrideside.deals
+  // schema (verified via information_schema 2026-05-25):
+  //   - deals.budget is decimal(10,2) — overflows at ~10 crore. The CRM
+  //     team treats client_budget (decimal(15,2)) as the canonical
+  //     "what the lead said" field, so we only write that one now. budget
+  //     stays null on inbox-pushed deals.
+  //   - deals.event_date (DATE) is legacy; the CRM frontend now writes
+  //     deals.event_dates (JSON array of date strings). We dual-write so
+  //     analytics that read either column see inbox deals.
+  //   - deals.category_id (bigint FK to categories) is populated on
+  //     99.97% of CRM deals. We source it from brand_settings.crm_category_id
+  //     so each brand maps to exactly one CRM category (TBS → Planning
+  //     and Decor, Revaah Decor → Revaah Decor, etc.). Null when the
+  //     brand hasn't been configured yet — leaves the column unset, same
+  //     as legacy behaviour.
+  //   - contact_number (varchar(20) NOT NULL).
+  //   - value (decimal(12,2) NOT NULL) — 0.00 for unbooked leads;
+  //     planners fill the real value during negotiation.
+  //   - status uses {WON, LOST, IN_PROGRESS}. New leads → 'IN_PROGRESS'.
+  //   - created_by is the {USER, BOT} enum, NOT the user id (that goes
+  //     into created_by_user_id).
+  //   - deal_owner_override (bit(1) NOT NULL, no default).
+  const eventDate = body.wedding_date ?? null;
+  const eventDatesJson = eventDate ? JSON.stringify([eventDate]) : null;
   let crmDealId: number;
   try {
     const dealResult = await insertCRM(
       `INSERT INTO deals (
-         name, contact_number, phone_number, person_name, city, event_date,
-         expected_gathering, client_budget, budget, value,
+         name, contact_number, phone_number, person_name, city,
+         event_date, event_dates,
+         expected_gathering, client_budget, value,
+         category_id,
          pipeline_id, stage_id, status,
          deal_source, deal_sub_source,
          created_by, created_by_name, created_by_user_id,
          notes, person_id, owner_id, deal_owner_override,
          created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
+       ) VALUES (?, ?, ?, ?, ?,
+                 ?, ?,
+                 ?, ?, 0,
+                 ?,
                  ?, ?, 'IN_PROGRESS',
                  'DIRECT', ?,
                  'USER', ?, ?,
@@ -375,11 +398,12 @@ export async function POST(
         rawPhone,                          // phone_number
         body.client_name,                  // person_name
         body.city ?? null,                 // city
-        body.wedding_date ?? null,         // event_date
+        eventDate,                         // event_date (legacy DATE column)
+        eventDatesJson,                    // event_dates (JSON array — current canonical column)
         body.guest_count ?? null,          // expected_gathering
         body.budget ?? null,               // client_budget
-        body.budget ?? null,               // budget
         // value = 0 literal
+        crmCategoryId,                     // category_id (from brand_settings.crm_category_id)
         pipeline_id,
         stage_id,
         // status = 'IN_PROGRESS' literal
