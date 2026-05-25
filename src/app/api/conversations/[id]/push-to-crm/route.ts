@@ -357,10 +357,11 @@ export async function POST(
   //     analytics that read either column see inbox deals.
   //   - deals.category_id (bigint FK to categories) is populated on
   //     99.97% of CRM deals. We source it from brand_settings.crm_category_id
-  //     so each brand maps to exactly one CRM category (TBS → Planning
-  //     and Decor, Revaah Decor → Revaah Decor, etc.). Null when the
-  //     brand hasn't been configured yet — leaves the column unset, same
-  //     as legacy behaviour.
+  //     so each brand maps to exactly one CRM category in active use
+  //     (TBS → Planning (4), Revaah Decor → Decor (5), Auramist →
+  //     Makeup (2), RSP → Photography (1)). Null when the brand hasn't
+  //     been configured yet — leaves the column unset, same as legacy
+  //     behaviour.
   //   - contact_number (varchar(20) NOT NULL).
   //   - value (decimal(12,2) NOT NULL) — 0.00 for unbooked leads;
   //     planners fill the real value during negotiation.
